@@ -54,7 +54,6 @@ public class CamdozaalFishingOverlay extends Overlay {
     {
         //Stroke stroke = new BasicStroke((float) config.borderWidth());
         Stroke stroke = new BasicStroke((float) BORDER_WIDTH);
-        System.out.println("plugin.getObjects() size: " + plugin.getObjects().size());
         for (ColorTileObject colorTileObject : plugin.getObjects())
         {
             TileObject object = colorTileObject.getTileObject();
@@ -186,14 +185,6 @@ public class CamdozaalFishingOverlay extends Overlay {
     //== old ========================================================================================================================================
 
     public Dimension renderOld(Graphics2D graphics) {
-        renderObjectClickbox(graphics, plugin.getOfferingTableTest());
-        renderObjectClickbox(graphics, plugin.getNorthernPreparationTableTest());
-        if (plugin.getSouthernMostFishingSpot() != null) {
-            renderShape(graphics, plugin.getSouthernMostFishingSpot().getCanvasTilePoly());
-        }
-
-        //OverlayUtil.rend
-
         /*if (plugin.playerIsAfk()) {
             Color glowColor = plugin.getGlowColor();
             graphics.setColor(new Color(
@@ -206,23 +197,8 @@ public class CamdozaalFishingOverlay extends Overlay {
             graphics.fill(getGameWindowRectangle());
         } else {
             isRenderingAlertAnimation = false;
-        }
-
-        return null;*/
+        }*/
         return null;
-    }
-
-    private void renderObjectClickbox(Graphics2D graphics, GameObject gameObject) {
-        if (gameObject != null) {
-            renderShape(graphics, gameObject.getClickbox());
-        }
-    }
-
-    private void renderShape(Graphics2D graphics, Shape shape) {
-        Stroke stroke = new BasicStroke((float) 8);
-        if (shape != null) {
-            OverlayUtil.renderPolygon(graphics, shape, Color.GREEN, Color.RED, stroke);
-        }
     }
 
     private Rectangle getGameWindowRectangle() {
@@ -248,15 +224,5 @@ public class CamdozaalFishingOverlay extends Overlay {
             return ((int) (fractionAlphaPositive * MAX_BRIGHTNESS_ALPHA_LEVEL * (maxIntensityPc / 100.0)));
         }
         return 0;
-    }
-
-    private void renderObject(Graphics2D graphics, GameObject object, Color color)
-    {
-        //Polygon poly = Perspective.getCanvasTilePoly(client, object.getLocalLocation());
-        if (object.getConvexHull() != null)
-        {
-            OverlayUtil.renderPolygon(graphics, object.getConvexHull(), color);
-            //OverlayUtil.renderImageLocation(client, graphics, brokenStrut.getLocalLocation(), hammerIcon, IMAGE_Z_OFFSET);
-        }
     }
 }
