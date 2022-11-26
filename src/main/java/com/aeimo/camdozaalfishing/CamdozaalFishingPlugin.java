@@ -13,7 +13,6 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.*;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.FishingSpot;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -61,11 +60,23 @@ public class CamdozaalFishingPlugin extends Plugin {
     private OverlayManager overlayManager;
 
     // General state
+    @Getter
     private CamdozaalFishingState goalPlayerState;
 
+    @Getter
     private boolean doAlertWeak;
 
-    private boolean doAlert;
+    @Getter
+    private boolean doAlertFull;
+
+    @Getter
+    private boolean highlightAltar;
+
+    @Getter
+    private boolean highlightPreparationTable;
+
+    @Getter
+    private boolean highlightFishingSpot;
 
     private boolean inCamdozaal;
 
@@ -143,8 +154,18 @@ public class CamdozaalFishingPlugin extends Plugin {
     //<editor-fold desc=object indicator bridging>
     //== object indicator bridging ==================================================================================================================
 
-    public List<ColorTileObject> getObjects() {
-        return objectIndicatorsUtil.getObjects();
+    public ColorTileObject getPreparationTable() {
+        return objectIndicatorsUtil.getObjects().stream()
+                .filter(o -> o.getName().equals(PREPARATION_TABLE.getName()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    public ColorTileObject getAltar() {
+        return objectIndicatorsUtil.getObjects().stream()
+                .filter(o -> o.getName().equals(ALTAR.getName()))
+                .findFirst()
+                .orElse(null);
     }
 
     @Override
@@ -218,6 +239,12 @@ public class CamdozaalFishingPlugin extends Plugin {
         updateCountsOfItems();
         updatePlayerLocation();
         updateInCamdozaal();
+
+        doAlertWeak = false;
+        doAlertFull = false;
+        highlightAltar = true;
+        highlightPreparationTable = true;
+        highlightFishingSpot = true;
     }
 
     private void updateCountsOfItems() {

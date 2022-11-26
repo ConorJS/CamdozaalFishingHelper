@@ -54,79 +54,89 @@ public class CamdozaalFishingOverlay extends Overlay {
     {
         //Stroke stroke = new BasicStroke((float) config.borderWidth());
         Stroke stroke = new BasicStroke((float) BORDER_WIDTH);
-        for (ColorTileObject colorTileObject : plugin.getObjects())
+
+        if (plugin.isHighlightAltar()) {
+            renderColorTileObject(graphics, plugin.getAltar(), stroke);
+        }
+        if (plugin.isHighlightPreparationTable()) {
+            renderColorTileObject(graphics, plugin.getPreparationTable(), stroke);
+        }
+        if (plugin.isHighlightFishingSpot()) {
+            // TODO
+        }
+
+        return null;
+    }
+
+    private void renderColorTileObject(Graphics2D graphics, ColorTileObject colorTileObject, Stroke stroke) {
+        TileObject object = colorTileObject.getTileObject();
+        Color color = colorTileObject.getColor();
+
+        if (object.getPlane() != client.getPlane())
         {
-            TileObject object = colorTileObject.getTileObject();
-            Color color = colorTileObject.getColor();
+            return;
+        }
 
-            if (object.getPlane() != client.getPlane())
+        ObjectComposition composition = colorTileObject.getComposition();
+        if (composition.getImpostorIds() != null)
+        {
+            // This is a multiloc
+            composition = composition.getImpostor();
+            // Only mark the object if the name still matches
+            if (composition == null
+                    || Strings.isNullOrEmpty(composition.getName())
+                    || "null".equals(composition.getName())
+                    || !composition.getName().equals(colorTileObject.getName()))
             {
-                continue;
+                return;
             }
+        }
 
-            ObjectComposition composition = colorTileObject.getComposition();
-            if (composition.getImpostorIds() != null)
-            {
-                // This is a multiloc
-                composition = composition.getImpostor();
-                // Only mark the object if the name still matches
-                if (composition == null
-                        || Strings.isNullOrEmpty(composition.getName())
-                        || "null".equals(composition.getName())
-                        || !composition.getName().equals(colorTileObject.getName()))
-                {
-                    continue;
-                }
-            }
+        Shape clickBox = object.getClickbox();
+        if (clickBox != null)
+        {
+            Color clickBoxColor = ColorUtil.colorWithAlpha(color, color.getAlpha() / 12);
+            OverlayUtil.renderPolygon(graphics, clickBox, color, clickBoxColor, stroke);
+        }
 
+        /*if (color == null || !config.rememberObjectColors())
+        {
+            // Fallback to the current config if the object is marked before the addition of multiple colors
+            color = config.markerColor();
+        }*/
+
+        // !! Overrides all previous assignments
+        //color = isInventoryFull() ? OVERRIDE_FULL_INV_OBJECT_COLOR : OVERRIDE_NON_FULL_INV_OBJECT_COLOR;
+
+        /*if (config.highlightHull())
+        {
+            renderConvexHull(graphics, object, color, stroke);
+        }
+
+        if (config.highlightOutline())
+        {
+            modelOutlineRenderer.drawOutline(object, (int)config.borderWidth(), color, config.outlineFeather());
+        }
+
+        if (config.highlightClickbox())
+        {
             Shape clickbox = object.getClickbox();
             if (clickbox != null)
             {
                 Color clickBoxColor = ColorUtil.colorWithAlpha(color, color.getAlpha() / 12);
                 OverlayUtil.renderPolygon(graphics, clickbox, color, clickBoxColor, stroke);
             }
-
-            /*if (color == null || !config.rememberObjectColors())
-            {
-                // Fallback to the current config if the object is marked before the addition of multiple colors
-                color = config.markerColor();
-            }*/
-
-            // !! Overrides all previous assignments
-            color = isInventoryFull() ? OVERRIDE_FULL_INV_OBJECT_COLOR : OVERRIDE_NON_FULL_INV_OBJECT_COLOR;
-
-            /*if (config.highlightHull())
-            {
-                renderConvexHull(graphics, object, color, stroke);
-            }
-
-            if (config.highlightOutline())
-            {
-                modelOutlineRenderer.drawOutline(object, (int)config.borderWidth(), color, config.outlineFeather());
-            }
-
-            if (config.highlightClickbox())
-            {
-                Shape clickbox = object.getClickbox();
-                if (clickbox != null)
-                {
-                    Color clickBoxColor = ColorUtil.colorWithAlpha(color, color.getAlpha() / 12);
-                    OverlayUtil.renderPolygon(graphics, clickbox, color, clickBoxColor, stroke);
-                }
-            }
-
-            if (config.highlightTile())
-            {
-                Polygon tilePoly = object.getCanvasTilePoly();
-                if (tilePoly != null)
-                {
-                    Color tileColor = ColorUtil.colorWithAlpha(color, color.getAlpha() / 12);
-                    OverlayUtil.renderPolygon(graphics, tilePoly, color, tileColor, stroke);
-                }
-            }*/
         }
 
-        return null;
+        if (config.highlightTile())
+        {
+            Polygon tilePoly = object.getCanvasTilePoly();
+            if (tilePoly != null)
+            {
+                Color tileColor = ColorUtil.colorWithAlpha(color, color.getAlpha() / 12);
+                OverlayUtil.renderPolygon(graphics, tilePoly, color, tileColor, stroke);
+            }
+        }*/
     }
 
     private void renderConvexHull(Graphics2D graphics, TileObject object, Color color, Stroke stroke)
