@@ -1,19 +1,17 @@
 package com.aeimo.camdozaalfishing;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
 import java.awt.Color;
 import java.util.*;
+import java.util.function.Function;
 import javax.inject.Inject;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
-import net.runelite.api.events.GameStateChanged;
-import net.runelite.api.events.GameTick;
-import net.runelite.api.events.NpcDespawned;
-import net.runelite.api.events.NpcSpawned;
+import net.runelite.api.events.*;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -27,25 +25,40 @@ import net.runelite.client.ui.overlay.OverlayManager;
 public class CamdozaalFishingPlugin extends Plugin {
     //== constants ====================================================================================================================
 
+    private static final Set<Integer> CAMDOZAAL_REGIONS = ImmutableSet.of();
+
     private static final int EARLY_ALERT_THRESHOLD = 1;
 
     private static final int SHORELINE_X_COORD = 10_000;
+
     private static final int SHORELINE_Y_COORD_START = 10_000;
+
     private static final int SHORELINE_Y_COORD_END = 10_005;
 
     // [7104, 6976] (west), [7232, 6976] (east)
-    private static final int NORTHERN_PREPARATION_TABLE_OBJECT_ID = 10_000;
+    private static final int PREPARATION_TABLE_OBJECT_ID = 41_545;
+
+    private static final LocalPoint NORTH_PREPARATION_TABLE_LOCATION = new LocalPoint(6144, 6976); // south at y=6336
+
     // [7360, 6848], (north-west) [7488, 6464] (south-east)
-    private static final int OFFERING_TABLE_OBJECT_ID = 10_001;
+    private static final int OFFERING_TABLE_OBJECT_ID = 41_546;
+
+    private static final LocalPoint OFFERING_TABLE_LOCATION = new LocalPoint(6400, 6656);
 
     private static final int RAW_GUPPY = 25652;
+
     private static final int GUPPY = 25654;
+
     private static final int RAW_CAVEFISH = 25658;
+
     private static final int CAVEFISH = 25660;
+
     private static final int RAW_TETRA = 25664;
+
     private static final int TETRA = 25666;
 
     private static final int[] RAW_FISH = new int[]{RAW_GUPPY, RAW_CAVEFISH, RAW_TETRA};
+
     private static final int[] PREPARED_FISH = new int[]{GUPPY, CAVEFISH, TETRA};
 
     //== attributes ===================================================================================================================
@@ -80,20 +93,50 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     // General state
     private CamdozaalFishingState goalPlayerState;
+
     private boolean doAlertWeak;
+
     private boolean doAlert;
+
+    private boolean inCamdozaal;
 
     // Inventory info
     private Map<Integer, PreviousAndCurrentInt> itemCountMemory = new HashMap<>();
 
     // World info
     private final List<NPC> shorelineFishingSpots = new ArrayList<>();
+
     @Getter
     private NPC southernMostFishingSpot = null;
+
     @Getter
     private ColorTileObject northernPreparationTable = null;
+
     @Getter
     private ColorTileObject offeringTable = null;
+
+    @Getter
+    private GameObject offeringTableTest = null;
+
+    private List<GameObject> offeringTables = new ArrayList<>();
+
+    @Getter
+    private GameObject northernPreparationTableTest = null;
+
+    private List<GameObject> preparationTables = new ArrayList<>();
+
+    @Getter
+    private List<HighlightGameObject> testHighlightObjects = new ArrayList();
+
+    private ObjectIndicatorsUtil objectIndicatorsUtil;
+
+    @AllArgsConstructor
+    @Getter
+    class HighlightGameObject {
+        private final GameObject gameObject;
+
+        private final Color color;
+    }
 
     //== setup =======================================================================================================================
 
@@ -104,16 +147,24 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     @Override
     protected void startUp() {
+        objectIndicatorsUtil = new ObjectIndicatorsUtil(client);
+        objectIndicatorsUtil.startUp();
+
         overlayManager.add(overlay);
 
         updateCountsOfItems();
         updatePlayerLocation();
-        updateEnvironment();
+        //updateEnvironment();
+        updateInCamdozaal();
     }
 
     @Override
     protected void shutDown() {
         overlayManager.remove(overlay);
+    }
+
+    public List<ColorTileObject> getObjects() {
+        return objectIndicatorsUtil.getObjects();
     }
 
     //== methods =====================================================================================================================
@@ -134,15 +185,13 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     //== subscriptions ===============================================================================================================
 
-    @Subscribe
-    public void onGameStateChanged(GameStateChanged gameStateChanged)
-    {
+    /*@Subscribe
+    public void onGameStateChanged(GameStateChanged gameStateChanged) {
         GameState gameState = gameStateChanged.getGameState();
-        if (gameState == GameState.CONNECTION_LOST || gameState == GameState.LOGIN_SCREEN || gameState == GameState.HOPPING)
-        {
+        if (gameState == GameState.CONNECTION_LOST || gameState == GameState.LOGIN_SCREEN || gameState == GameState.HOPPING) {
             // TODO some logic to clear UI
         }
-    }
+    }*/
 
     // TODO when config added
     @Subscribe
@@ -153,39 +202,144 @@ public class CamdozaalFishingPlugin extends Plugin {
     public void onGameTick(GameTick gameTick) {
         updateCountsOfItems();
         updatePlayerLocation();
-        updateEnvironment();
+        updateInCamdozaal();
 
         establishState();
         establishAlerts();
     }
 
     @Subscribe
-    public void onNpcSpawned(NpcSpawned event)
-    {
+    public void onNpcSpawned(NpcSpawned event) {
         final NPC npc = event.getNpc();
 
-        if (FishingSpot.findSpot(npc.getId()) == null)
-        {
+        if (FishingSpot.findSpot(npc.getId()) == null) {
             return;
         }
 
-        LocalPoint loc = npc.getLocalLocation();
-        if (loc.getX() == SHORELINE_X_COORD && (loc.getY() >= SHORELINE_Y_COORD_START && loc.getY() <= SHORELINE_Y_COORD_END)) {
+        shorelineFishingSpots.add(npc);
+        southernMostFishingSpot = findClosestGameObject(shorelineFishingSpots, NPC::getLocalLocation);
+
+        System.out.println("New fishing spot: " + npc.getLocalLocation());
+        System.out.println("Closest fishing spot: " + southernMostFishingSpot.getLocalLocation());
+
+        /*if (loc.getX() == SHORELINE_X_COORD && (loc.getY() >= SHORELINE_Y_COORD_START && loc.getY() <= SHORELINE_Y_COORD_END)) {
             log.info("Fishing spot added: {} at {}", npc, npc.getLocalLocation());
             shorelineFishingSpots.add(npc);
-        }
+        }*/
     }
 
     @Subscribe
-    public void onNpcDespawned(NpcDespawned npcDespawned)
-    {
+    public void onNpcDespawned(NpcDespawned npcDespawned) {
         final NPC npc = npcDespawned.getNpc();
 
-        log.info("Fishing spot removed: {} at {}", npc, npc.getLocalLocation());
+        //log.info("Fishing spot removed: {} at {}", npc, npc.getLocalLocation());
         shorelineFishingSpots.remove(npc);
         if (southernMostFishingSpot == npc) {
             southernMostFishingSpot = null;
         }
+
+        System.out.println("Removed fishing spot: " + npc.getLocalLocation());
+        if (southernMostFishingSpot != null) {
+            System.out.println("Closest fishing spot: " + southernMostFishingSpot.getLocalLocation());
+        } else {
+            System.out.println("Closest fishing spot: NULL");
+        }
+    }
+
+    /*@Subscribe
+    public void onGameObjectSpawned(GameObjectSpawned event) {
+        if (!inCamdozaal) {
+            return;
+        }
+        addGameObject(event.getGameObject());
+    }*/
+
+    /*@Subscribe
+    public void onGameObjectDespawned(GameObjectDespawned event) {
+        if (!inCamdozaal) {
+            return;
+        }
+
+        removeGameObject(event.getGameObject());
+    }*/
+
+    private boolean checkInCamdozaal() {
+        // TODO(conor) - CAMDOZAAL_REGIONS isn't implemented
+        if (true) {
+            return true;
+        }
+
+        GameState gameState = client.getGameState();
+        if (gameState != GameState.LOGGED_IN
+                && gameState != GameState.LOADING) {
+            return false;
+        }
+
+        int[] currentMapRegions = client.getMapRegions();
+
+        // Verify that all regions exist in MOTHERLODE_MAP_REGIONS
+        for (int region : currentMapRegions) {
+            if (!CAMDOZAAL_REGIONS.contains(region)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    //== subscriptions (object indicator integration) ===============================================================================
+
+    @Subscribe
+    public void onWallObjectSpawned(WallObjectSpawned event)
+    {
+        objectIndicatorsUtil.onWallObjectSpawned(event);
+    }
+
+    @Subscribe
+    public void onWallObjectDespawned(WallObjectDespawned event)
+    {
+        objectIndicatorsUtil.onWallObjectDespawned(event);
+    }
+
+    @Subscribe
+    public void onGameObjectSpawned(GameObjectSpawned event)
+    {
+        objectIndicatorsUtil.onGameObjectSpawned(event);
+    }
+
+    @Subscribe
+    public void onDecorativeObjectSpawned(DecorativeObjectSpawned event)
+    {
+        objectIndicatorsUtil.onDecorativeObjectSpawned(event);
+    }
+
+    @Subscribe
+    public void onGameObjectDespawned(GameObjectDespawned event)
+    {
+        objectIndicatorsUtil.onGameObjectDespawned(event);
+    }
+
+    @Subscribe
+    public void onDecorativeObjectDespawned(DecorativeObjectDespawned event)
+    {
+        objectIndicatorsUtil.onDecorativeObjectDespawned(event);
+    }
+
+    @Subscribe
+    public void onGroundObjectSpawned(GroundObjectSpawned event)
+    {
+        objectIndicatorsUtil.onGroundObjectSpawned(event);
+    }
+
+    @Subscribe
+    public void onGroundObjectDespawned(GroundObjectDespawned event)
+    {
+        objectIndicatorsUtil.onGroundObjectDespawned(event);
+    }
+
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged gameStateChanged) {
+        objectIndicatorsUtil.onGameStateChanged(gameStateChanged);
     }
 
     //== core ========================================================================================================================
@@ -209,82 +363,13 @@ public class CamdozaalFishingPlugin extends Plugin {
     }
 
     private void updateEnvironment() {
-        // TODO- tiles?
-        Scene scene = client.getScene();
-        Tile[][][] tiles = scene.getTiles();
-
-        /*log.info("tile 1D length = {}", tiles.length);
-        log.info("tile 2D[0] length = {}", tiles[0].length);
-        log.info("tile 2D[1] length = {}", tiles[1].length);
-        log.info("tile 3D[0][0] length = {}", tiles[0][0].length);
-        log.info("tile 3D[0][1] length = {}", tiles[0][1].length);*/
-
-        int gameObjectCount = 0;
-        int wallObjectCount = 0;
-        int groundObjectCount = 0;
-        for (int i = 0; i < tiles.length; i++) {
-            Tile[][] tilesX = tiles[i];
-            for (int j = 0; j < tilesX.length; j++) {
-                Tile[] tileY = tiles[i][j];
-                for (int k = 0; k < tilesX.length; k++) {
-                    Tile tileZ = tiles[i][j][k];
-
-                    final Tile tile = tileZ;
-                    if (tile != null) {
-                        final GameObject[] tileGameObjects = tile.getGameObjects();
-                        final DecorativeObject tileDecorativeObject = tile.getDecorativeObject();
-                        final WallObject tileWallObject = tile.getWallObject();
-                        final GroundObject groundObject = tile.getGroundObject();
-
-                        //log.info("tile = {}", tile);
-                        //log.info("tileGameObjects = {}", tileGameObjects);
-                        //log.info("tileWallObject = {}", tileWallObject);
-                        //log.info("groundObject = {}", groundObject);
-                        if (tileGameObjects != null) {
-                            gameObjectCount += tileGameObjects.length;
-                        }
-                        if (tileWallObject != null) {
-                            gameObjectCount++;
-                        }
-                        if (groundObject != null) {
-                            groundObjectCount++;
-                        }
-                    } else {
-                        //log.info("Null tile: [{i}, {j}, {k}]");
-                    }
-                }
-            }
-        }
-
-        log.info("game objects: {}, wall objects: {}, ground object: {}",
-                gameObjectCount, wallObjectCount, groundObjectCount);
-
-        if (true) {
-            return;
-        }
-
-        final Tile tile = tiles[0][0][0];
-        final GameObject[] tileGameObjects = tile.getGameObjects();
-        final DecorativeObject tileDecorativeObject = tile.getDecorativeObject();
-        final WallObject tileWallObject = tile.getWallObject();
-        final GroundObject groundObject = tile.getGroundObject();
-
-        log.info("tile = {}", tile);
-        log.info("tileGameObjects = {}", tileGameObjects);
-        log.info("tileWallObject = {}", tileWallObject);
-        log.info("groundObject = {}", groundObject);
-
-        TileObject tileObject = tileGameObjects.length == 0 ? null : tileGameObjects[0];
-        northernPreparationTable = new ColorTileObject(tileObject,
-                client.getObjectDefinition(NORTHERN_PREPARATION_TABLE_OBJECT_ID),
-                "Northern preparation table",
-                new Color(255, 255, 0));
-
-        // TODO- same for offering table
-
         southernMostFishingSpot = shorelineFishingSpots.stream()
                 .max(Comparator.comparing(a -> a.getLocalLocation().getY()))
                 .orElse(null);
+    }
+
+    private void updateInCamdozaal() {
+        inCamdozaal = checkInCamdozaal();
     }
 
     private void establishState() {
@@ -377,6 +462,41 @@ public class CamdozaalFishingPlugin extends Plugin {
         return (int) Math.round(ticks / 0.6);
     }
 
+    private void addGameObject(GameObject gameObject) {
+        if (PREPARATION_TABLE_OBJECT_ID == gameObject.getId()) {
+            preparationTables.add(gameObject);
+            northernPreparationTableTest = findClosestGameObject(preparationTables, GameObject::getLocalLocation);
+            System.out.printf("Prep table: ID=%s Loc=%s%n", gameObject.getId(), gameObject.getLocalLocation());
+        }
+
+        if (OFFERING_TABLE_OBJECT_ID == gameObject.getId()) {
+            offeringTables.add(gameObject);
+            offeringTableTest = findClosestGameObject(offeringTables, GameObject::getLocalLocation);
+            System.out.printf("Offer table: ID=%s Loc=%s%n", gameObject.getId(), gameObject.getLocalLocation());
+        }
+    }
+
+    private void removeGameObject(GameObject gameObject) {
+        if (PREPARATION_TABLE_OBJECT_ID == gameObject.getId()) {
+            preparationTables.remove(gameObject);
+            northernPreparationTableTest = findClosestGameObject(preparationTables, GameObject::getLocalLocation);
+            System.out.printf("Prep table removed: ID=%s Loc=%s%n", gameObject.getId(), gameObject.getLocalLocation());
+        }
+
+        if (OFFERING_TABLE_OBJECT_ID == gameObject.getId()) {
+            offeringTables.remove(gameObject);
+            offeringTableTest = findClosestGameObject(offeringTables, GameObject::getLocalLocation);
+            System.out.printf("Offer table removed: ID=%s Loc=%s%n", gameObject.getId(), gameObject.getLocalLocation());
+        }
+    }
+
+    private <T> T findClosestGameObject(List<T> gameObjects, Function<T, LocalPoint> locationHandler) {
+        LocalPoint playerLoc = client.getLocalPlayer().getLocalLocation();
+        return gameObjects.stream()
+                .min(Comparator.comparingInt(o -> locationHandler.apply(o).distanceTo(playerLoc)))
+                .orElse(null);
+    }
+
     //== types =======================================================================================================================
 
     enum CamdozaalFishingState {
@@ -385,6 +505,7 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     static class PreviousAndCurrent<T> {
         T previous;
+
         T current;
 
         PreviousAndCurrent(T initialValue) {
