@@ -68,15 +68,6 @@ public class CamdozaalFishingPlugin extends Plugin {
     @Getter
     private boolean doAlertFull;
 
-    @Getter
-    private boolean highlightAltar;
-
-    @Getter
-    private boolean highlightPreparationTable;
-
-    @Getter
-    private boolean highlightFishingSpot;
-
     private boolean inCamdozaal;
 
     // Inventory info
@@ -232,9 +223,18 @@ public class CamdozaalFishingPlugin extends Plugin {
 
         doAlertWeak = false;
         doAlertFull = false;
-        highlightAltar = true;
-        highlightPreparationTable = true;
-        highlightFishingSpot = true;
+    }
+
+    protected boolean isHighlightPreparationTable() {
+        return goalPlayerState == CamdozaalFishingState.PREPARE;
+    }
+
+    protected boolean isHighlightAltar() {
+        return goalPlayerState == CamdozaalFishingState.OFFER;
+    }
+
+    protected boolean isHighlightFishingSpot() {
+        return goalPlayerState == CamdozaalFishingState.FISH;
     }
 
     private void updateCountsOfItems() {
