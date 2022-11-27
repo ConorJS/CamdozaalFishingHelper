@@ -1,8 +1,8 @@
 package com.aeimo.camdozaalfishing;
 
 import com.google.common.base.Strings;
-import java.awt.*;
 import java.awt.Point;
+import java.awt.*;
 import java.util.Arrays;
 import java.util.Objects;
 import javax.inject.Inject;
@@ -61,11 +61,25 @@ public class CamdozaalFishingOverlay extends Overlay {
         if (plugin.isHighlightPreparationTable()) {
             renderColorTileObject(graphics, plugin.getPreparationTable(), stroke);
         }
-        if (plugin.isHighlightFishingSpot() && plugin.getSouthernMostFishingSpot() != null) {
-            Polygon poly = plugin.getSouthernMostFishingSpot().getCanvasTilePoly();
+        NPC fishingSpot = plugin.getSouthernMostFishingSpot();
+        if (plugin.isHighlightFishingSpot() && fishingSpot != null) {
+            Polygon poly = fishingSpot.getCanvasTilePoly();
+            // At the end of a fishing spot's lifespan, is enters a state (TODO what?)...
+            boolean oddState = false;
+            if (fishingSpot.isDead()) {
+                oddState = true;
+                String textOverlay = "Dead fishing spot";
+                net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
+                OverlayUtil.renderTextLocation(graphics, textLoc, textOverlay, Color.RED);
+            } else if (!fishingSpot.getComposition().isClickable()) {
+                oddState = true;
+                String textOverlay = "Not clickable";
+                net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
+                OverlayUtil.renderTextLocation(graphics, textLoc, textOverlay, Color.RED);
+            }
             if (poly != null)
             {
-                OverlayUtil.renderPolygon(graphics, poly, Color.YELLOW);
+                OverlayUtil.renderPolygon(graphics, poly, oddState ? Color.RED : Color.YELLOW);
             }
         }
 
