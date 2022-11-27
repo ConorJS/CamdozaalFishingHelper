@@ -13,7 +13,6 @@ import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.events.*;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.game.FishingSpot;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -83,11 +82,11 @@ public class CamdozaalFishingPlugin extends Plugin {
     // Inventory info
     private Map<Integer, PreviousAndCurrentInt> itemCountMemory = new HashMap<>();
 
-    // TODO(conor) Implement/use these
     // World info
-    private final List<NPC> shorelineFishingSpots = new ArrayList<>();
     @Getter
-    private NPC southernMostFishingSpot = null;
+    private final List<NPC> fishingSpots = new ArrayList<>();
+    @Getter
+    private NPC southernMostFishingSpot;
 
     @Provides
     CamdozaalFishingConfig getConfig(ConfigManager configManager) {
@@ -113,41 +112,32 @@ public class CamdozaalFishingPlugin extends Plugin {
         updatePlayerLocation();
         updateInCamdozaal();
 
-        establishState();
+        establishItemState();
         establishAlerts();
+
+        recalculateClosestFishingSpot();
     }
 
     @Subscribe
     public void onNpcSpawned(NpcSpawned event) {
         final NPC npc = event.getNpc();
-
-        if (FishingSpot.findSpot(npc.getId()) == null) {
+        if (npc.getName() != null && !npc.getName().contains("Fishing spot")) {
             return;
         }
 
-        shorelineFishingSpots.add(npc);
-        southernMostFishingSpot = findClosestGameObject(shorelineFishingSpots, NPC::getLocalLocation);
-
-        System.out.println("New fishing spot: " + npc.getLocalLocation());
-        System.out.println("Closest fishing spot: " + southernMostFishingSpot.getLocalLocation());
+        fishingSpots.add(npc);
+        recalculateClosestFishingSpot();
     }
 
     @Subscribe
     public void onNpcDespawned(NpcDespawned npcDespawned) {
         final NPC npc = npcDespawned.getNpc();
-
-        //log.info("Fishing spot removed: {} at {}", npc, npc.getLocalLocation());
-        shorelineFishingSpots.remove(npc);
-        if (southernMostFishingSpot == npc) {
-            southernMostFishingSpot = null;
+        if (npc.getName() != null && !npc.getName().contains("Fishing spot")) {
+            return;
         }
 
-        System.out.println("Removed fishing spot: " + npc.getLocalLocation());
-        if (southernMostFishingSpot != null) {
-            System.out.println("Closest fishing spot: " + southernMostFishingSpot.getLocalLocation());
-        } else {
-            System.out.println("Closest fishing spot: NULL");
-        }
+        fishingSpots.remove(npc);
+        recalculateClosestFishingSpot();
     }
     //</editor-fold>
 
@@ -265,12 +255,6 @@ public class CamdozaalFishingPlugin extends Plugin {
         }
     }
 
-    private void updateEnvironment() {
-        southernMostFishingSpot = shorelineFishingSpots.stream()
-                .max(Comparator.comparing(a -> a.getLocalLocation().getY()))
-                .orElse(null);
-    }
-
     private boolean checkInCamdozaal() {
         // TODO(conor) - CAMDOZAAL_REGIONS isn't implemented
         if (true) {
@@ -299,7 +283,7 @@ public class CamdozaalFishingPlugin extends Plugin {
         inCamdozaal = checkInCamdozaal();
     }
 
-    private void establishState() {
+    private void establishItemState() {
         // If multiple items changed in a tick, don't attempt to cater to this (only lag should be able to cause this).
         if (itemCountMemory.values().stream().filter(PreviousAndCurrent::changed).count() > 1) {
             return;
@@ -410,6 +394,10 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     //<editor-fold desc=helpers (game objects)>
     //== helpers (game objects) =====================================================================================================================
+
+    private void recalculateClosestFishingSpot() {
+        southernMostFishingSpot = findClosestGameObject(fishingSpots, NPC::getLocalLocation);
+    }
 
     private <T> T findClosestGameObject(List<T> gameObjects, Function<T, LocalPoint> locationHandler) {
         LocalPoint playerLoc = client.getLocalPlayer().getLocalLocation();

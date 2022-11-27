@@ -43,7 +43,7 @@ public class CamdozaalFishingOverlay extends Overlay {
 
     private static final Integer BORDER_WIDTH = 8;
 
-    // TODO - These could be configured in the plugin itself
+    // TODO(conor) - These could be configured in the plugin itself
     private static final Color OVERRIDE_FULL_INV_OBJECT_COLOR = new Color(0xff00ff00);
     private static final Color OVERRIDE_NON_FULL_INV_OBJECT_COLOR = new Color(0xffff0000);
 
@@ -61,8 +61,12 @@ public class CamdozaalFishingOverlay extends Overlay {
         if (plugin.isHighlightPreparationTable()) {
             renderColorTileObject(graphics, plugin.getPreparationTable(), stroke);
         }
-        if (plugin.isHighlightFishingSpot()) {
-            // TODO
+        if (plugin.isHighlightFishingSpot() && plugin.getSouthernMostFishingSpot() != null) {
+            Polygon poly = plugin.getSouthernMostFishingSpot().getCanvasTilePoly();
+            if (poly != null)
+            {
+                OverlayUtil.renderPolygon(graphics, poly, Color.YELLOW);
+            }
         }
 
         return null;
