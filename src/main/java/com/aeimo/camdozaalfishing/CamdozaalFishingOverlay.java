@@ -52,6 +52,7 @@ public class CamdozaalFishingOverlay extends Overlay {
     @Override
     public Dimension render(Graphics2D graphics)
     {
+        // TODO(conor) Make this configurable, or remove this fragment
         //Stroke stroke = new BasicStroke((float) config.borderWidth());
         Stroke stroke = new BasicStroke((float) BORDER_WIDTH);
 
@@ -81,6 +82,19 @@ public class CamdozaalFishingOverlay extends Overlay {
             {
                 OverlayUtil.renderPolygon(graphics, poly, oddState ? Color.RED : Color.YELLOW);
             }
+        }
+
+        if (plugin.isDoAlertFull()) {
+            Color glowColor = plugin.getGlowColor();
+            graphics.setColor(new Color(
+                    glowColor.getRed(),
+                    glowColor.getGreen(),
+                    glowColor.getBlue(),
+                    getBreathingAlpha(plugin.getGlowBreathePeriod()))
+            );
+            graphics.fill(getGameWindowRectangle());
+        } else {
+            isRenderingAlertAnimation = false;
         }
 
         return null;
@@ -157,45 +171,7 @@ public class CamdozaalFishingOverlay extends Overlay {
         }*/
     }
 
-    private void renderConvexHull(Graphics2D graphics, TileObject object, Color color, Stroke stroke)
-    {
-        final Shape polygon;
-        Shape polygon2 = null;
-
-        if (object instanceof GameObject)
-        {
-            polygon = ((GameObject) object).getConvexHull();
-        }
-        else if (object instanceof WallObject)
-        {
-            polygon = ((WallObject) object).getConvexHull();
-            polygon2 = ((WallObject) object).getConvexHull2();
-        }
-        else if (object instanceof DecorativeObject)
-        {
-            polygon = ((DecorativeObject) object).getConvexHull();
-            polygon2 = ((DecorativeObject) object).getConvexHull2();
-        }
-        else if (object instanceof GroundObject)
-        {
-            polygon = ((GroundObject) object).getConvexHull();
-        }
-        else
-        {
-            polygon = object.getCanvasTilePoly();
-        }
-
-        if (polygon != null)
-        {
-            OverlayUtil.renderPolygon(graphics, polygon, color, stroke);
-        }
-
-        if (polygon2 != null)
-        {
-            OverlayUtil.renderPolygon(graphics, polygon2, color, stroke);
-        }
-    }
-
+    // TODO(conor) - Remove? What is this for?
     // Duplicates zMenuEntryPlugin
     private boolean isInventoryFull() {
         ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);

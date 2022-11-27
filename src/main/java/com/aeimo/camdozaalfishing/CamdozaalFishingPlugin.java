@@ -17,6 +17,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
+// TODO(conor) - Needs magic numbers moved to constants
 @Slf4j
 @PluginDescriptor(name = "Camdozaal Fishing Helper", description = "Visual indicators and alerts to simplify Camdozaal fishing", tags = {"afk", "camdozaal", "f2p", "fishing", "prayer"}, enabledByDefault = false)
 public class CamdozaalFishingPlugin extends Plugin {
@@ -58,27 +59,6 @@ public class CamdozaalFishingPlugin extends Plugin {
     @Inject
     private OverlayManager overlayManager;
 
-    // General state
-    @Getter
-    private CamdozaalFishingState goalPlayerState;
-
-    @Getter
-    private boolean doAlertWeak;
-
-    @Getter
-    private boolean doAlertFull;
-
-    private boolean inCamdozaal;
-
-    // Inventory info
-    private Map<Integer, PreviousAndCurrentInt> itemCountMemory = new HashMap<>();
-
-    // World info
-    @Getter
-    private final List<NPC> fishingSpots = new ArrayList<>();
-    @Getter
-    private NPC southernMostFishingSpot;
-
     @Provides
     CamdozaalFishingConfig getConfig(ConfigManager configManager) {
         return configManager.getConfig(CamdozaalFishingConfig.class);
@@ -86,7 +66,25 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     private ObjectIndicatorsUtil objectIndicatorsUtil;
 
+    // General state
+    private CamdozaalFishingState currentPlayerState;
+    private CamdozaalFishingState soonToBePlayerState;
+    private CamdozaalFishingState goalPlayerState;
+
+    private boolean inCamdozaal;
+
     private PreviousAndCurrent<LocalPoint> playerLocationMemory;
+
+
+    // Inventory info
+    private final Map<Integer, PreviousAndCurrentInt> itemCountMemory = new HashMap<>();
+
+    // World info
+    @Getter
+    private final List<NPC> fishingSpots = new ArrayList<>();
+    @Getter
+    private NPC southernMostFishingSpot;
+
     //</editor-fold>
 
     //<editor-fold desc=subscriptions>
@@ -103,8 +101,15 @@ public class CamdozaalFishingPlugin extends Plugin {
         updatePlayerLocation();
         updateInCamdozaal();
 
-        establishItemState();
+        establishCurrentState();
+        establishGoalState();
         establishAlerts();
+
+        if (currentPlayerState != null && goalPlayerState != null) {
+            System.out.println("===== NEW TICK BELOW =====");
+            System.out.println("Current state: " + currentPlayerState.name());
+            System.out.println("Goal state: " + goalPlayerState.name());
+        }
 
         recalculateClosestFishingSpot();
     }
@@ -220,9 +225,19 @@ public class CamdozaalFishingPlugin extends Plugin {
         updateCountsOfItems();
         updatePlayerLocation();
         updateInCamdozaal();
+    }
 
-        doAlertWeak = false;
-        doAlertFull = false;
+    // TODO(conor) - Implement
+    protected boolean isDoAlertWeak() {
+        return false;
+    }
+
+    protected boolean isDoAlertFull() {
+        if (currentPlayerState != goalPlayerState && currentPlayerState != CamdozaalFishingState.MOVING) {
+            return true;
+        }
+
+        return currentPlayerState == CamdozaalFishingState.INACTIVE;
     }
 
     protected boolean isHighlightPreparationTable() {
@@ -269,7 +284,7 @@ public class CamdozaalFishingPlugin extends Plugin {
 
         int[] currentMapRegions = client.getMapRegions();
 
-        // Verify that all regions exist in MOTHERLODE_MAP_REGIONS
+        // Verify that all regions exist in CAMDOZAAL_REGIONS
         for (int region : currentMapRegions) {
             if (!CAMDOZAAL_REGIONS.contains(region)) {
                 return false;
@@ -283,7 +298,38 @@ public class CamdozaalFishingPlugin extends Plugin {
         inCamdozaal = checkInCamdozaal();
     }
 
-    private void establishItemState() {
+    // TODO(conor) - Make these establish* functions pure(r)
+    private void establishCurrentState() {
+        Player player = client.getLocalPlayer();
+        int animationId = player.getAnimation();
+        LocalPoint playerLocation = player.getLocalLocation();
+        // TODO(conor) - Perhaps these should be less strict, and allow 1 tick of no anim? (and the animationId check below more strict)?
+        if (animationId == 896 && playerLocation.distanceTo(getPreparationTable().getTileObject().getLocalLocation()) <= 143) {
+            currentPlayerState = CamdozaalFishingState.PREPARE;
+            return;
+        }
+        if (animationId == 3_705 && playerLocation.distanceTo(getPreparationTable().getTileObject().getLocalLocation()) <= 271) {
+            currentPlayerState = CamdozaalFishingState.OFFER;
+            return;
+        }
+        if (animationId == 621 && playerLocation.distanceTo(getSouthernMostFishingSpot().getLocalLocation()) <= 128) {
+            currentPlayerState = CamdozaalFishingState.FISH;
+            return;
+        }
+        // TODO(conor) - Being too careful in avoiding false positives for idle player with both checks?
+        if (playerLocationMemory.changed() || animationId != -1) {
+            currentPlayerState = CamdozaalFishingState.MOVING;
+            return;
+        }
+
+        currentPlayerState = CamdozaalFishingState.INACTIVE;
+    }
+
+    private void estimateNextState() {
+        // TODO(conor)
+    }
+
+    private void establishGoalState() {
         // If multiple items changed in a tick, don't attempt to cater to this (only lag should be able to cause this).
         if (itemCountMemory.values().stream().filter(PreviousAndCurrent::changed).count() > 1) {
             return;
@@ -314,7 +360,7 @@ public class CamdozaalFishingPlugin extends Plugin {
         // 2.2) For fishing, this can be known by checking if the inventory is full, or... TODO check RL fishing plugin
 
         if (getItemsCount(RAW_FISH) == EARLY_ALERT_THRESHOLD && anyItemsDecreased(RAW_FISH)) {
-            doAlertWeak = true;
+            //doAlertWeak = true;
         }
     }
     //</editor-fold>
@@ -411,7 +457,7 @@ public class CamdozaalFishingPlugin extends Plugin {
     //== types ======================================================================================================================================
 
     enum CamdozaalFishingState {
-        FISH, PREPARE, OFFER
+        FISH, PREPARE, OFFER, MOVING, INACTIVE, UNKNOWN
     }
 
     static class PreviousAndCurrent<T> {
