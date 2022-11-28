@@ -22,6 +22,7 @@ import net.runelite.client.ui.overlay.OverlayManager;
 @PluginDescriptor(name = "Camdozaal Fishing Helper", description = "Visual indicators and alerts to simplify Camdozaal fishing", tags = {"afk", "camdozaal", "f2p", "fishing", "prayer"}, enabledByDefault = false)
 public class CamdozaalFishingPlugin extends Plugin {
     //<editor-fold desc=constants>
+    // @formatter:off
     //== constants ====================================================================================================================
 
     static final ObjectPoint PREPARATION_TABLE = new ObjectPoint(41545, "Preparation Table", 11610, 56, 14, 0, Color.YELLOW);
@@ -43,6 +44,7 @@ public class CamdozaalFishingPlugin extends Plugin {
     private static final int[] RAW_FISH = new int[]{RAW_GUPPY, RAW_CAVEFISH, RAW_TETRA};
     private static final int[] PREPARED_FISH = new int[]{GUPPY, CAVEFISH, TETRA};
     //</editor-fold>
+    // @formatter:on
 
     //<editor-fold desc=attributes>
     //== attributes ===================================================================================================================
@@ -68,7 +70,9 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     // General state
     private CamdozaalFishingState currentPlayerState;
+
     private CamdozaalFishingState soonToBePlayerState;
+
     private CamdozaalFishingState goalPlayerState;
 
     private boolean inCamdozaal;
@@ -82,6 +86,7 @@ public class CamdozaalFishingPlugin extends Plugin {
     // World info
     @Getter
     private final List<NPC> fishingSpots = new ArrayList<>();
+
     @Getter
     private NPC southernMostFishingSpot;
 
@@ -90,26 +95,15 @@ public class CamdozaalFishingPlugin extends Plugin {
     //<editor-fold desc=subscriptions>
     //== subscriptions ===============================================================================================================
 
-    // TODO(conor) when config added
-    /*@Subscribe
-    public void onConfigChanged(ConfigChanged event) {
-    }*/
-
     @Subscribe
     public void onGameTick(GameTick gameTick) {
         updateCountsOfItems();
         updatePlayerLocation();
         updateInCamdozaal();
 
-        establishCurrentState();
-        establishGoalState();
+        currentPlayerState = establishCurrentState();
+        goalPlayerState = establishGoalState();
         establishAlerts();
-
-        if (currentPlayerState != null && goalPlayerState != null) {
-            System.out.println("===== NEW TICK BELOW =====");
-            System.out.println("Current state: " + currentPlayerState.name());
-            System.out.println("Goal state: " + goalPlayerState.name());
-        }
 
         recalculateClosestFishingSpot();
     }
@@ -160,50 +154,42 @@ public class CamdozaalFishingPlugin extends Plugin {
     }
 
     @Subscribe
-    public void onWallObjectSpawned(WallObjectSpawned event)
-    {
+    public void onWallObjectSpawned(WallObjectSpawned event) {
         objectIndicatorsUtil.onWallObjectSpawned(event);
     }
 
     @Subscribe
-    public void onWallObjectDespawned(WallObjectDespawned event)
-    {
+    public void onWallObjectDespawned(WallObjectDespawned event) {
         objectIndicatorsUtil.onWallObjectDespawned(event);
     }
 
     @Subscribe
-    public void onGameObjectSpawned(GameObjectSpawned event)
-    {
+    public void onGameObjectSpawned(GameObjectSpawned event) {
         objectIndicatorsUtil.onGameObjectSpawned(event);
     }
 
     @Subscribe
-    public void onDecorativeObjectSpawned(DecorativeObjectSpawned event)
-    {
+    public void onDecorativeObjectSpawned(DecorativeObjectSpawned event) {
         objectIndicatorsUtil.onDecorativeObjectSpawned(event);
     }
 
     @Subscribe
-    public void onGameObjectDespawned(GameObjectDespawned event)
-    {
+    public void onGameObjectDespawned(GameObjectDespawned event) {
         objectIndicatorsUtil.onGameObjectDespawned(event);
     }
 
     @Subscribe
-    public void onDecorativeObjectDespawned(DecorativeObjectDespawned event)
-    {
+    public void onDecorativeObjectDespawned(DecorativeObjectDespawned event) {
         objectIndicatorsUtil.onDecorativeObjectDespawned(event);
     }
 
     @Subscribe
-    public void onGroundObjectSpawned(GroundObjectSpawned event)
-    {
+    public void onGroundObjectSpawned(GroundObjectSpawned event) {
         objectIndicatorsUtil.onGroundObjectSpawned(event);
     }
 
     @Subscribe
-    public void onGroundObjectDespawned(GroundObjectDespawned event)
-    {
+    public void onGroundObjectDespawned(GroundObjectDespawned event) {
         objectIndicatorsUtil.onGroundObjectDespawned(event);
     }
 
@@ -229,10 +215,14 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     // TODO(conor) - Implement
     protected boolean isDoAlertWeak() {
-        return false;
+        return false && !userInteractingWithClient();
     }
 
     protected boolean isDoAlertFull() {
+        if (userInteractingWithClient()) {
+            return false;
+        }
+
         if (currentPlayerState != goalPlayerState && currentPlayerState != CamdozaalFishingState.MOVING) {
             return true;
         }
@@ -298,55 +288,56 @@ public class CamdozaalFishingPlugin extends Plugin {
         inCamdozaal = checkInCamdozaal();
     }
 
-    // TODO(conor) - Make these establish* functions pure(r)
-    private void establishCurrentState() {
+    private CamdozaalFishingState establishCurrentState() {
         Player player = client.getLocalPlayer();
         int animationId = player.getAnimation();
         LocalPoint playerLocation = player.getLocalLocation();
-        // TODO(conor) - Perhaps these should be less strict, and allow 1 tick of no anim? (and the animationId check below more strict)?
         if (animationId == 896 && playerLocation.distanceTo(getPreparationTable().getTileObject().getLocalLocation()) <= 143) {
-            currentPlayerState = CamdozaalFishingState.PREPARE;
-            return;
+            return CamdozaalFishingState.PREPARE;
         }
         if (animationId == 3_705 && playerLocation.distanceTo(getPreparationTable().getTileObject().getLocalLocation()) <= 271) {
-            currentPlayerState = CamdozaalFishingState.OFFER;
-            return;
+            return CamdozaalFishingState.OFFER;
         }
         if (animationId == 621 && playerLocation.distanceTo(getSouthernMostFishingSpot().getLocalLocation()) <= 128) {
-            currentPlayerState = CamdozaalFishingState.FISH;
-            return;
+            return CamdozaalFishingState.FISH;
         }
-        // TODO(conor) - Being too careful in avoiding false positives for idle player with both checks?
-        if (playerLocationMemory.changed() || animationId != -1) {
-            currentPlayerState = CamdozaalFishingState.MOVING;
-            return;
+        // 808 pose animation seems to occur when the player isn't walking or running.
+        // Initiating walking seems to change this to 819 for the first tick, then 821 for all subsequent.
+        // Initiating running seems to change this to 820 for the first tick, then 824 for all subsequent.
+        // Pose animation probably changes to values other than these 5, but just not normally outside of Camdozaal (unless items trigger them).
+        if (playerLocationMemory.changed() || animationId != -1 || player.getPoseAnimation() != 808) {
+            return CamdozaalFishingState.MOVING;
         }
 
-        currentPlayerState = CamdozaalFishingState.INACTIVE;
+        return CamdozaalFishingState.INACTIVE;
     }
 
     private void estimateNextState() {
         // TODO(conor)
     }
 
-    private void establishGoalState() {
-        // If multiple items changed in a tick, don't attempt to cater to this (only lag should be able to cause this).
-        if (itemCountMemory.values().stream().filter(PreviousAndCurrent::changed).count() > 1) {
-            return;
-        }
-
-        // When the inventory fills up with raw fish (we can assume while fishing), switch to fish preparation.
-        if (emptyInventorySlots() == 0 && anyItemsIncreased(RAW_FISH)) {
-            goalPlayerState = CamdozaalFishingState.PREPARE;
+    private CamdozaalFishingState establishGoalState() {
+        // If more than 2 items changed in a tick, don't attempt to cater to this (only lag should be able to cause this).
+        // 2 items changing = a raw item being converted to prepared.
+        if (itemCountMemory.values().stream().filter(PreviousAndCurrent::changed).count() > 2) {
+            return CamdozaalFishingState.UNKNOWN;
         }
 
         if (getItemsCount(RAW_FISH) == 0) {
             if (getItemsCount(PREPARED_FISH) > 0) {
                 // If we have at least one prepared fish, and no raw fish, we can assume the player should be making offerings (they may already be).
-                goalPlayerState = CamdozaalFishingState.OFFER;
+                return CamdozaalFishingState.OFFER;
             } else {
                 // If the player has no fish of any type, they should be fishing.
-                goalPlayerState = CamdozaalFishingState.FISH;
+                return CamdozaalFishingState.FISH;
+            }
+        } else {
+            // Edge case: If the player has empty inventory slots, raw fish and prepared fish, then they've not filled up their inventory
+            // before starting preparation; it's easiest to just prepare any raw fish and finish the whole inventory - so focus preparation.
+            if (emptyInventorySlots() == 0 || getItemsCount(PREPARED_FISH) > 0) {
+                return CamdozaalFishingState.PREPARE;
+            } else {
+                return CamdozaalFishingState.FISH;
             }
         }
     }
@@ -367,6 +358,15 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     //<editor-fold desc=helpers (alerts)>
     //== helpers (alerts) ===========================================================================================================================
+
+    private boolean userInteractingWithClient() {
+        // `client.getKeyboardIdleTicks() < 10` used to be included here
+        return client.getGameState() != GameState.LOGGED_IN
+                || client.getLocalPlayer() == null
+                // If user has clicked in the last second then they're not idle so don't send idle notification
+                || System.currentTimeMillis() - client.getMouseLastPressedMillis() < 1000
+                || client.getKeyboardIdleTicks() < 10;
+    }
 
     private int getItemCount(int itemId) {
         return itemCountMemory.get(itemId).current;
