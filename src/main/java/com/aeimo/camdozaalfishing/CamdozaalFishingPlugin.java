@@ -17,7 +17,11 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
+// TODO(conor) - Need to add weak alerts right before an item finishes processing (+config for delay)
+// TODO(conor) - Notify when need to run Barronite handles (+config for handle count)
+// TODO(conor) - When fish spots die, alert is slow
 // TODO(conor) - Needs magic numbers moved to constants
+// TODO(conor) - Need to add graphics for remaining items (?)
 @Slf4j
 @PluginDescriptor(name = "Camdozaal Fishing Helper", description = "Visual indicators and alerts to simplify Camdozaal fishing", tags = {"afk", "camdozaal", "f2p", "fishing", "prayer"}, enabledByDefault = false)
 public class CamdozaalFishingPlugin extends Plugin {
@@ -44,20 +48,16 @@ public class CamdozaalFishingPlugin extends Plugin {
     private static final int[] RAW_FISH = new int[]{RAW_GUPPY, RAW_CAVEFISH, RAW_TETRA};
     private static final int[] PREPARED_FISH = new int[]{GUPPY, CAVEFISH, TETRA};
     //</editor-fold>
-    // @formatter:on
 
     //<editor-fold desc=attributes>
     //== attributes ===================================================================================================================
 
     @Inject
     private CamdozaalFishingConfig config;
-
     @Inject
     private CamdozaalFishingOverlay overlay;
-
     @Inject
     private Client client;
-
     @Inject
     private OverlayManager overlayManager;
 
@@ -70,15 +70,12 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     // General state
     private CamdozaalFishingState currentPlayerState;
-
     private CamdozaalFishingState soonToBePlayerState;
-
     private CamdozaalFishingState goalPlayerState;
 
     private boolean inCamdozaal;
 
     private PreviousAndCurrent<LocalPoint> playerLocationMemory;
-
 
     // Inventory info
     private final Map<Integer, PreviousAndCurrentInt> itemCountMemory = new HashMap<>();
@@ -86,11 +83,11 @@ public class CamdozaalFishingPlugin extends Plugin {
     // World info
     @Getter
     private final List<NPC> fishingSpots = new ArrayList<>();
-
     @Getter
     private NPC southernMostFishingSpot;
 
     //</editor-fold>
+    // @formatter:on
 
     //<editor-fold desc=subscriptions>
     //== subscriptions ===============================================================================================================
