@@ -1,14 +1,13 @@
 package com.aeimo.camdozaalfishing;
 
 import com.google.common.base.Strings;
-import java.awt.Point;
 import java.awt.*;
-import java.util.Arrays;
-import java.util.Objects;
 import javax.inject.Inject;
-import net.runelite.api.*;
+import net.runelite.api.Client;
+import net.runelite.api.NPC;
+import net.runelite.api.ObjectComposition;
+import net.runelite.api.TileObject;
 import net.runelite.client.ui.overlay.*;
-import net.runelite.client.ui.overlay.outline.ModelOutlineRenderer;
 import net.runelite.client.util.ColorUtil;
 
 public class CamdozaalFishingOverlay extends Overlay {
@@ -20,38 +19,21 @@ public class CamdozaalFishingOverlay extends Overlay {
     @Inject
     private Client client;
 
-    private CamdozaalFishingConfig config;
-
     private boolean isRenderingAlertAnimation = false;
 
     @Inject
-    private CamdozaalFishingOverlay(Client client, CamdozaalFishingConfig config, CamdozaalFishingPlugin plugin,
-            ModelOutlineRenderer modelOutlineRenderer)
-    {
+    private CamdozaalFishingOverlay(Client client, CamdozaalFishingPlugin plugin) {
         this.client = client;
-        this.config = config;
         this.plugin = plugin;
-        this.modelOutlineRenderer = modelOutlineRenderer;
         setPosition(OverlayPosition.DYNAMIC);
         setPriority(OverlayPriority.LOW);
         setLayer(OverlayLayer.ABOVE_SCENE);
     }
 
-    //== overlay ====================================================================================================================================
-
-    private static final Integer INVENTORY_SIZE = 28;
-
     private static final Integer BORDER_WIDTH = 8;
 
-    // TODO(conor) - These could be configured in the plugin itself
-    private static final Color OVERRIDE_FULL_INV_OBJECT_COLOR = new Color(0xff00ff00);
-    private static final Color OVERRIDE_NON_FULL_INV_OBJECT_COLOR = new Color(0xffff0000);
-
-    private final ModelOutlineRenderer modelOutlineRenderer;
-
     @Override
-    public Dimension render(Graphics2D graphics)
-    {
+    public Dimension render(Graphics2D graphics) {
         // TODO(conor) Make this configurable, or remove this fragment
         //Stroke stroke = new BasicStroke((float) config.borderWidth());
         Stroke stroke = new BasicStroke((float) BORDER_WIDTH);
@@ -78,19 +60,19 @@ public class CamdozaalFishingOverlay extends Overlay {
                 net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
                 OverlayUtil.renderTextLocation(graphics, textLoc, textOverlay, Color.RED);
             }
-            if (poly != null)
-            {
+            if (poly != null) {
                 OverlayUtil.renderPolygon(graphics, poly, oddState ? Color.RED : Color.YELLOW);
             }
         }
 
-        if (plugin.isDoAlertFull()) {
-            Color glowColor = plugin.getGlowColor();
+        boolean fullAlert = plugin.isDoAlertFull();
+        if (fullAlert || plugin.isDoAlertWeak()) {
+            Color glowColor = fullAlert ? plugin.getGlowColor() : plugin.getWeakGlowColor();
             graphics.setColor(new Color(
                     glowColor.getRed(),
                     glowColor.getGreen(),
                     glowColor.getBlue(),
-                    getBreathingAlpha(plugin.getGlowBreathePeriod()))
+                    getBreathingAlpha(plugin.getGlowBreathePeriod(), fullAlert ? 1.0f : 0.5f))
             );
             graphics.fill(getGameWindowRectangle());
         } else {
@@ -104,105 +86,28 @@ public class CamdozaalFishingOverlay extends Overlay {
         TileObject object = colorTileObject.getTileObject();
         Color color = colorTileObject.getColor();
 
-        if (object.getPlane() != client.getPlane())
-        {
+        if (object.getPlane() != client.getPlane()) {
             return;
         }
 
         ObjectComposition composition = colorTileObject.getComposition();
-        if (composition.getImpostorIds() != null)
-        {
+        if (composition.getImpostorIds() != null) {
             // This is a multiloc
             composition = composition.getImpostor();
             // Only mark the object if the name still matches
             if (composition == null
                     || Strings.isNullOrEmpty(composition.getName())
                     || "null".equals(composition.getName())
-                    || !composition.getName().equals(colorTileObject.getName()))
-            {
+                    || !composition.getName().equals(colorTileObject.getName())) {
                 return;
             }
         }
 
         Shape clickBox = object.getClickbox();
-        if (clickBox != null)
-        {
+        if (clickBox != null) {
             Color clickBoxColor = ColorUtil.colorWithAlpha(color, color.getAlpha() / 12);
             OverlayUtil.renderPolygon(graphics, clickBox, color, clickBoxColor, stroke);
         }
-
-        /*if (color == null || !config.rememberObjectColors())
-        {
-            // Fallback to the current config if the object is marked before the addition of multiple colors
-            color = config.markerColor();
-        }*/
-
-        // !! Overrides all previous assignments
-        //color = isInventoryFull() ? OVERRIDE_FULL_INV_OBJECT_COLOR : OVERRIDE_NON_FULL_INV_OBJECT_COLOR;
-
-        /*if (config.highlightHull())
-        {
-            renderConvexHull(graphics, object, color, stroke);
-        }
-
-        if (config.highlightOutline())
-        {
-            modelOutlineRenderer.drawOutline(object, (int)config.borderWidth(), color, config.outlineFeather());
-        }
-
-        if (config.highlightClickbox())
-        {
-            Shape clickbox = object.getClickbox();
-            if (clickbox != null)
-            {
-                Color clickBoxColor = ColorUtil.colorWithAlpha(color, color.getAlpha() / 12);
-                OverlayUtil.renderPolygon(graphics, clickbox, color, clickBoxColor, stroke);
-            }
-        }
-
-        if (config.highlightTile())
-        {
-            Polygon tilePoly = object.getCanvasTilePoly();
-            if (tilePoly != null)
-            {
-                Color tileColor = ColorUtil.colorWithAlpha(color, color.getAlpha() / 12);
-                OverlayUtil.renderPolygon(graphics, tilePoly, color, tileColor, stroke);
-            }
-        }*/
-    }
-
-    // TODO(conor) - Remove? What is this for?
-    // Duplicates zMenuEntryPlugin
-    private boolean isInventoryFull() {
-        ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
-        if (inventory == null) {
-            return false;
-        }
-
-        return (Arrays.stream(inventory.getItems())
-                .filter(Objects::nonNull)
-                // Empty inventory slot
-                .filter(i -> i.getId() != -1)
-                .count() >= INVENTORY_SIZE);
-    }
-
-    //== old ========================================================================================================================================
-
-    public Dimension renderOld(Graphics2D graphics) {
-        /*if (plugin.playerIsAfk()) {
-            Color glowColor = plugin.getGlowColor();
-            graphics.setColor(new Color(
-                    glowColor.getRed(),
-                    glowColor.getGreen(),
-                    glowColor.getBlue(),
-                    getBreathingAlpha(plugin.getGlowBreathePeriod()))
-            );
-
-            graphics.fill(getGameWindowRectangle());
-        } else {
-            isRenderingAlertAnimation = false;
-        }*/
-        return null;
     }
 
     private Rectangle getGameWindowRectangle() {
@@ -214,11 +119,11 @@ public class CamdozaalFishingOverlay extends Overlay {
         return new Rectangle(adjustedLocation, clientCanvasSize);
     }
 
-    private int getBreathingAlpha(int breathePeriodMillis) {
+    private int getBreathingAlpha(int breathePeriodMillis, float intensityModifier) {
         double currentMillisOffset = System.currentTimeMillis() % breathePeriodMillis;
         double fractionCycleComplete = currentMillisOffset / breathePeriodMillis;
 
-        int maxIntensityPc = plugin.getMaxBreatheIntensityPercent();
+        int maxIntensityPc = (int) ((float) plugin.getMaxBreatheIntensityPercent() * intensityModifier);
         double fractionAlpha = Math.sin(fractionCycleComplete * 2 * Math.PI);
         double fractionAlphaPositive = (fractionAlpha + 1) / 2;
 

@@ -5,6 +5,9 @@ import com.google.inject.Provides;
 import java.awt.Color;
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.IntPredicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +20,6 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
-// TODO(conor) - Need to add weak alerts right before an item finishes processing (+config for delay)
 // TODO(conor) - Notify when need to run Barronite handles (+config for handle count)
 // TODO(conor) - When fish spots die, alert is slow
 // TODO(conor) - Needs magic numbers moved to constants
@@ -29,24 +31,27 @@ public class CamdozaalFishingPlugin extends Plugin {
     // @formatter:off
     //== constants ====================================================================================================================
 
-    static final ObjectPoint PREPARATION_TABLE = new ObjectPoint(41545, "Preparation Table", 11610, 56, 14, 0, Color.YELLOW);
-    static final ObjectPoint ALTAR = new ObjectPoint(41546, "Altar", 11610, 58, 12, 0, Color.YELLOW);
+    private static final int PREPARATION_TABLE_OBJECT_ID = 41_545;
+    private static final int OFFERING_TABLE_OBJECT_ID = 41_546;
+    static final ObjectPoint PREPARATION_TABLE = new ObjectPoint(PREPARATION_TABLE_OBJECT_ID, "Preparation Table", 11610, 56, 14, 0, Color.YELLOW);
+    static final ObjectPoint ALTAR = new ObjectPoint(OFFERING_TABLE_OBJECT_ID, "Altar", 11610, 58, 12, 0, Color.YELLOW);
 
     // TODO(conor) - Implement, use in isCamdozaal
     private static final Set<Integer> CAMDOZAAL_REGIONS = ImmutableSet.of();
 
-    private static final int EARLY_ALERT_THRESHOLD = 1;
+    private static final int TICKS_PER_FISH_ATTEMPT = 6;
+    private static final int TICKS_PER_PREPARE = 4;
+    private static final int TICKS_PER_OFFER = 3;
 
-    private static final int PREPARATION_TABLE_OBJECT_ID = 41_545;
-    private static final int OFFERING_TABLE_OBJECT_ID = 41_546;
+    private static final int EARLY_ALERT_THRESHOLD = 4;
     private static final int RAW_GUPPY = 25_652;
     private static final int GUPPY = 25_654;
     private static final int RAW_CAVEFISH = 25_658;
     private static final int CAVEFISH = 25_660;
     private static final int RAW_TETRA = 25_664;
     private static final int TETRA = 25_666;
-    private static final int[] RAW_FISH = new int[]{RAW_GUPPY, RAW_CAVEFISH, RAW_TETRA};
-    private static final int[] PREPARED_FISH = new int[]{GUPPY, CAVEFISH, TETRA};
+    private static final Integer[] RAW_FISH = new Integer[]{RAW_GUPPY, RAW_CAVEFISH, RAW_TETRA};
+    private static final Integer[] PREPARED_FISH = new Integer[]{GUPPY, CAVEFISH, TETRA};
     //</editor-fold>
 
     //<editor-fold desc=attributes>
@@ -70,7 +75,6 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     // General state
     private CamdozaalFishingState currentPlayerState;
-    private CamdozaalFishingState soonToBePlayerState;
     private CamdozaalFishingState goalPlayerState;
 
     private boolean inCamdozaal;
@@ -79,6 +83,9 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     // Inventory info
     private final Map<Integer, PreviousAndCurrentInt> itemCountMemory = new HashMap<>();
+    private Integer lastItemIncrease;
+    private Integer lastItemDecrease;
+    private int ticksSinceLastItemChange = 0;
 
     // World info
     @Getter
@@ -100,8 +107,8 @@ public class CamdozaalFishingPlugin extends Plugin {
 
         currentPlayerState = establishCurrentState();
         goalPlayerState = establishGoalState();
-        establishAlerts();
 
+        pruneDeadFishingSpots();
         recalculateClosestFishingSpot();
     }
 
@@ -205,14 +212,44 @@ public class CamdozaalFishingPlugin extends Plugin {
 
         overlayManager.add(overlay);
 
-        updateCountsOfItems();
         updatePlayerLocation();
         updateInCamdozaal();
     }
 
-    // TODO(conor) - Implement
     protected boolean isDoAlertWeak() {
-        return false && !userInteractingWithClient();
+        if (!config.usePreEmptiveAlerts()) {
+            return false;
+        }
+
+        if (userInteractingWithClient()) {
+            return false;
+        }
+
+        int thresholdTicks = secondsToTicksRoundNearest(config.preEmptiveDelayMs() / 1000f);
+
+        if (Arrays.asList(RAW_FISH).contains(lastItemIncrease)
+                && goalPlayerState == CamdozaalFishingState.FISH
+                && meetsThresholdWithRemainderDelayOrExceeds(emptyInventorySlots(), thresholdTicks, TICKS_PER_FISH_ATTEMPT)) {
+            return true;
+        }
+
+        if (Arrays.asList(RAW_FISH).contains(lastItemDecrease)
+                && goalPlayerState == CamdozaalFishingState.PREPARE
+                && meetsThresholdWithRemainderDelayOrExceeds(getItemCount(lastItemDecrease), thresholdTicks, TICKS_PER_PREPARE)) {
+            return true;
+        }
+
+        return (Arrays.asList(PREPARED_FISH).contains(lastItemDecrease)
+                && goalPlayerState == CamdozaalFishingState.OFFER
+                && meetsThresholdWithRemainderDelayOrExceeds(getItemCount(lastItemDecrease), thresholdTicks, TICKS_PER_OFFER));
+    }
+
+    private boolean meetsThresholdWithRemainderDelayOrExceeds(int subject, int thresholdTicks, int actionTicks) {
+        // Unsuccessful actions pad ticksSinceLastItemChange, get around this by figuring out when the last action (successful
+        // or otherwise) must have occurred.
+        int ticksSinceLastAction = ticksSinceLastItemChange % actionTicks;
+        int estimatedTicksLeft = ((actionTicks * subject) - ticksSinceLastAction);
+        return thresholdTicks >= estimatedTicksLeft;
     }
 
     protected boolean isDoAlertFull() {
@@ -246,6 +283,34 @@ public class CamdozaalFishingPlugin extends Plugin {
         updateCountOfItem(GUPPY);
         updateCountOfItem(CAVEFISH);
         updateCountOfItem(TETRA);
+
+        Integer maybeItemIncreased = determineLastItemChange(this::anyItemsIncreased);
+        Integer maybeItemDecreased = determineLastItemChange(this::anyItemsDecreased);
+        if (maybeItemIncreased == null && maybeItemDecreased == null) {
+            ticksSinceLastItemChange++;
+        } else {
+            ticksSinceLastItemChange = 0;
+        }
+        lastItemIncrease = orDefault(maybeItemIncreased, lastItemIncrease);
+        lastItemDecrease = orDefault(maybeItemDecreased, lastItemDecrease);
+    }
+
+    private <T> T orDefault(T maybe, T defaultValue) {
+        return maybe == null ? defaultValue : maybe;
+    }
+
+    private Integer determineLastItemChange(IntPredicate handler) {
+        List<Integer> decreasedItems = Stream.concat(Arrays.stream(RAW_FISH), Arrays.stream(PREPARED_FISH))
+                .filter(handler::test)
+                .collect(Collectors.toList());
+        if (!decreasedItems.isEmpty()) {
+            if (decreasedItems.size() > 1) {
+                log.error("Multiple tracked items changed in the same way: {}", decreasedItems);
+            } else {
+                return decreasedItems.get(0);
+            }
+        }
+        return null;
     }
 
     private void updatePlayerLocation() {
@@ -309,10 +374,6 @@ public class CamdozaalFishingPlugin extends Plugin {
         return CamdozaalFishingState.INACTIVE;
     }
 
-    private void estimateNextState() {
-        // TODO(conor)
-    }
-
     private CamdozaalFishingState establishGoalState() {
         // If more than 2 items changed in a tick, don't attempt to cater to this (only lag should be able to cause this).
         // 2 items changing = a raw item being converted to prepared.
@@ -320,8 +381,8 @@ public class CamdozaalFishingPlugin extends Plugin {
             return CamdozaalFishingState.UNKNOWN;
         }
 
-        if (getItemsCount(RAW_FISH) == 0) {
-            if (getItemsCount(PREPARED_FISH) > 0) {
+        if (getItemsCount(primIntArray(RAW_FISH)) == 0) {
+            if (getItemsCount(primIntArray(PREPARED_FISH)) > 0) {
                 // If we have at least one prepared fish, and no raw fish, we can assume the player should be making offerings (they may already be).
                 return CamdozaalFishingState.OFFER;
             } else {
@@ -331,7 +392,7 @@ public class CamdozaalFishingPlugin extends Plugin {
         } else {
             // Edge case: If the player has empty inventory slots, raw fish and prepared fish, then they've not filled up their inventory
             // before starting preparation; it's easiest to just prepare any raw fish and finish the whole inventory - so focus preparation.
-            if (emptyInventorySlots() == 0 || getItemsCount(PREPARED_FISH) > 0) {
+            if (emptyInventorySlots() == 0 || getItemsCount(primIntArray(PREPARED_FISH)) > 0) {
                 return CamdozaalFishingState.PREPARE;
             } else {
                 return CamdozaalFishingState.FISH;
@@ -339,17 +400,8 @@ public class CamdozaalFishingPlugin extends Plugin {
         }
     }
 
-    // TODO(conor)
-    private void establishAlerts() {
-        // A strong alert should be issued whenever the player is:
-        // 1) Standing still
-        // 2) Not fishing, preparing or offering
-        // 2.1) For preparing or offering, this is covered by just checking if items have changed in the past 4 ticks
-        // 2.2) For fishing, this can be known by checking if the inventory is full, or... TODO check RL fishing plugin
-
-        if (getItemsCount(RAW_FISH) == EARLY_ALERT_THRESHOLD && anyItemsDecreased(RAW_FISH)) {
-            //doAlertWeak = true;
-        }
+    private int[] primIntArray(Integer[] objectArray) {
+        return Arrays.stream(objectArray).mapToInt(obj -> obj).toArray();
     }
     //</editor-fold>
 
@@ -369,8 +421,8 @@ public class CamdozaalFishingPlugin extends Plugin {
         return itemCountMemory.get(itemId).current;
     }
 
-    private static int secondsToTicksRoundNearest(int ticks) {
-        return (int) Math.round(ticks / 0.6);
+    private static int secondsToTicksRoundNearest(float seconds) {
+        return (int) Math.round(seconds / 0.6);
     }
 
     public int getGlowBreathePeriod() {
@@ -383,6 +435,10 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     public Color getGlowColor() {
         return config.glowColor();
+    }
+
+    public Color getWeakGlowColor() {
+        return config.weakGlowColor();
     }
     //</editor-fold>
 
@@ -442,6 +498,24 @@ public class CamdozaalFishingPlugin extends Plugin {
         southernMostFishingSpot = findClosestGameObject(fishingSpots, NPC::getLocalLocation);
     }
 
+    private void pruneDeadFishingSpots() {
+        fishingSpots.stream()
+                .filter(spot -> {
+                    // At the end of a fishing spot's lifespan, is enters a state (TODO what?)...
+                    boolean oddState = false;
+                    if (spot.isDead()) {
+                        oddState = true;
+                        System.out.println("Dead fishing spot");
+                    }
+                    if (!spot.getComposition().isClickable()) {
+                        oddState = true;
+                        System.out.println("Not clickable spot");
+                    }
+                    return oddState;
+                })
+                .forEach(fishingSpots::remove);
+    }
+
     private <T> T findClosestGameObject(List<T> gameObjects, Function<T, LocalPoint> locationHandler) {
         LocalPoint playerLoc = client.getLocalPlayer().getLocalLocation();
         return gameObjects.stream()
@@ -486,11 +560,11 @@ public class CamdozaalFishingPlugin extends Plugin {
         }
 
         boolean increased() {
-            return current > previous;
+            return current != null && previous != null && current > previous;
         }
 
         boolean decreased() {
-            return previous > current;
+            return current != null && previous != null && previous > current;
         }
     }
     //</editor-fold>
