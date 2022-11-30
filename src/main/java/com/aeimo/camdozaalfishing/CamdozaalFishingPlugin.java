@@ -23,7 +23,6 @@ import net.runelite.client.ui.overlay.OverlayManager;
 // TODO(conor) - Notify when need to run Barronite handles (+config for handle count)
 // TODO(conor) - When fish spots die, alert is slow
 // TODO(conor) - Needs magic numbers moved to constants
-// TODO(conor) - Need to add graphics for remaining items (?)
 @Slf4j
 @PluginDescriptor(name = "Camdozaal Fishing Helper", description = "Visual indicators and alerts to simplify Camdozaal fishing", tags = {"afk", "camdozaal", "f2p", "fishing", "prayer"}, enabledByDefault = false)
 public class CamdozaalFishingPlugin extends Plugin {
@@ -43,7 +42,6 @@ public class CamdozaalFishingPlugin extends Plugin {
     private static final int TICKS_PER_PREPARE = 4;
     private static final int TICKS_PER_OFFER = 3;
 
-    private static final int EARLY_ALERT_THRESHOLD = 4;
     private static final int RAW_GUPPY = 25_652;
     private static final int GUPPY = 25_654;
     private static final int RAW_CAVEFISH = 25_658;
@@ -234,13 +232,13 @@ public class CamdozaalFishingPlugin extends Plugin {
         }
 
         if (Arrays.asList(RAW_FISH).contains(lastItemDecrease)
-                && goalPlayerState == CamdozaalFishingState.PREPARE
+                && (goalPlayerState == CamdozaalFishingState.PREPARE || goalPlayerState == CamdozaalFishingState.OFFER_PREEMPT)
                 && meetsThresholdWithRemainderDelayOrExceeds(getItemCount(lastItemDecrease), thresholdTicks, TICKS_PER_PREPARE)) {
             return true;
         }
 
         return (Arrays.asList(PREPARED_FISH).contains(lastItemDecrease)
-                && goalPlayerState == CamdozaalFishingState.OFFER
+                && (goalPlayerState == CamdozaalFishingState.OFFER || goalPlayerState == CamdozaalFishingState.FISH_PREEMPT)
                 && meetsThresholdWithRemainderDelayOrExceeds(getItemCount(lastItemDecrease), thresholdTicks, TICKS_PER_OFFER));
     }
 
@@ -269,11 +267,11 @@ public class CamdozaalFishingPlugin extends Plugin {
     }
 
     protected boolean isHighlightAltar() {
-        return goalPlayerState == CamdozaalFishingState.OFFER;
+        return goalPlayerState == CamdozaalFishingState.OFFER || goalPlayerState == CamdozaalFishingState.OFFER_PREEMPT;
     }
 
     protected boolean isHighlightFishingSpot() {
-        return goalPlayerState == CamdozaalFishingState.FISH;
+        return goalPlayerState == CamdozaalFishingState.FISH || goalPlayerState == CamdozaalFishingState.FISH_PREEMPT;
     }
 
     private void updateCountsOfItems() {
@@ -384,20 +382,36 @@ public class CamdozaalFishingPlugin extends Plugin {
         if (getItemsCount(primIntArray(RAW_FISH)) == 0) {
             if (getItemsCount(primIntArray(PREPARED_FISH)) > 0) {
                 // If we have at least one prepared fish, and no raw fish, we can assume the player should be making offerings (they may already be).
+                if (isDoAlertWeak() && onlyOneItemTypeRemaining(primIntArray(PREPARED_FISH)) && getItemsCount(lastItemDecrease) > 0) {
+                    // Right at the end of offering, if we're doing pre-emptive alerting, also pre-emptively guide the player to fish.
+                    return CamdozaalFishingState.FISH_PREEMPT;
+                }
                 return CamdozaalFishingState.OFFER;
             } else {
                 // If the player has no fish of any type, they should be fishing.
                 return CamdozaalFishingState.FISH;
             }
         } else {
-            // Edge case: If the player has empty inventory slots, raw fish and prepared fish, then they've not filled up their inventory
+            // RHS=Edge case: If the player has empty inventory slots, raw fish and prepared fish, then they've not filled up their inventory
             // before starting preparation; it's easiest to just prepare any raw fish and finish the whole inventory - so focus preparation.
             if (emptyInventorySlots() == 0 || getItemsCount(primIntArray(PREPARED_FISH)) > 0) {
+                if (isDoAlertWeak() && onlyOneItemTypeRemaining(primIntArray(RAW_FISH)) && getItemsCount(lastItemDecrease) > 0) {
+                    // Right at the end of preparing, if we're doing pre-emptive alerting, also pre-emptively guide the player to fish.
+                    return CamdozaalFishingState.OFFER_PREEMPT;
+                }
                 return CamdozaalFishingState.PREPARE;
             } else {
+                // Don't try and pre-emptively highlight the preparation table at the end of fishing (fishing can fail).
                 return CamdozaalFishingState.FISH;
             }
         }
+    }
+
+    private boolean onlyOneItemTypeRemaining(int... itemIds) {
+        return Arrays.stream(itemIds)
+                .filter(i -> getItemsCount(i) > 0)
+                .boxed()
+                .count() <= 1;
     }
 
     private int[] primIntArray(Integer[] objectArray) {
@@ -484,6 +498,9 @@ public class CamdozaalFishingPlugin extends Plugin {
     }
 
     private int getItemsCount(int... itemIds) {
+        if (itemIds == null) {
+            return 0;
+        }
         return Arrays.stream(itemIds)
                 .mapToObj(itemCountMemory::get)
                 .mapToInt(PreviousAndCurrentInt::current)
@@ -528,7 +545,7 @@ public class CamdozaalFishingPlugin extends Plugin {
     //== types ======================================================================================================================================
 
     enum CamdozaalFishingState {
-        FISH, PREPARE, OFFER, MOVING, INACTIVE, UNKNOWN
+        FISH, FISH_PREEMPT, PREPARE, OFFER, OFFER_PREEMPT, MOVING, INACTIVE, UNKNOWN
     }
 
     static class PreviousAndCurrent<T> {
