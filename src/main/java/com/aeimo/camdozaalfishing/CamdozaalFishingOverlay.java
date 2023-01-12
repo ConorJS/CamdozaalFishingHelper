@@ -2,6 +2,8 @@ package com.aeimo.camdozaalfishing;
 
 import com.google.common.base.Strings;
 import java.awt.*;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
@@ -44,7 +46,8 @@ public class CamdozaalFishingOverlay extends Overlay {
         if (plugin.isHighlightPreparationTable()) {
             renderColorTileObject(graphics, plugin.getPreparationTable(), stroke);
         }
-        NPC fishingSpot = plugin.getSouthernMostFishingSpot();
+        CamdozaalFishingPlugin.TrackedNPC closestFishingSpot = plugin.getClosestFishingSpot();
+        NPC fishingSpot = closestFishingSpot.getNpc();
         if (plugin.isHighlightFishingSpot() && fishingSpot != null) {
             Polygon poly = fishingSpot.getCanvasTilePoly();
             // At the end of a fishing spot's lifespan, is enters a state (TODO what?)...
@@ -65,7 +68,37 @@ public class CamdozaalFishingOverlay extends Overlay {
             }
         }
 
-        boolean fullAlert = plugin.isDoAlertFull();
+        // TODO(conor) - Remove later, diagnosing weird fish spot issue
+        plugin.getFishingSpots().stream()
+                //.filter(spot -> spot != fishingSpot)
+                .forEach(spot -> {
+                    Color closestHighlightColor = plugin.isHighlightFishingSpot() ? Color.YELLOW : Color.BLUE;
+                    highlightFishingSpotWithDate(graphics, spot, spot == closestFishingSpot ? closestHighlightColor : Color.BLACK);
+                });
+
+        if (plugin.isHighlightFishingSpot() && fishingSpot != null) {
+            Polygon poly = fishingSpot.getCanvasTilePoly();
+            // At the end of a fishing spot's lifespan, is enters a state (TODO what?)...
+            // TODO(conor) - Remove this; debugging only
+            boolean oddState = false;
+            if (fishingSpot.isDead()) {
+                oddState = true;
+                String textOverlay = "Dead fishing spot";
+                net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
+                OverlayUtil.renderTextLocation(graphics, textLoc, textOverlay, Color.RED);
+            } else if (!fishingSpot.getComposition().isClickable()) {
+                oddState = true;
+                String textOverlay = "Not clickable";
+                net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
+                OverlayUtil.renderTextLocation(graphics, textLoc, textOverlay, Color.RED);
+            }
+            // TODO(conor) - Temporarily replaced by debug highlighting above
+            /*if (poly != null) {
+                OverlayUtil.renderPolygon(graphics, poly, oddState ? Color.RED : Color.YELLOW);
+            }*/
+        }
+
+        boolean fullAlert = plugin.isDoAlertFull(false);
         if (fullAlert || plugin.isDoAlertWeak()) {
             Color glowColor = fullAlert ? plugin.getGlowColor() : plugin.getWeakGlowColor();
             graphics.setColor(new Color(
@@ -80,6 +113,34 @@ public class CamdozaalFishingOverlay extends Overlay {
         }
 
         return null;
+    }
+
+    private void highlightFishingSpotWithDate(Graphics2D graphics, CamdozaalFishingPlugin.TrackedNPC trackedFishingSpot, Color highlightColor) {
+        NPC spotNPC = trackedFishingSpot.getNpc();
+        Polygon poly = spotNPC.getCanvasTilePoly();
+        if (poly != null) {
+            OverlayUtil.renderPolygon(graphics, poly, highlightColor);
+
+            long instantiationDiff = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC) - trackedFishingSpot.getInstantiationDate().toEpochSecond(ZoneOffset.UTC);
+            // Green(g=255) at 0s,
+            // Black(g=0) at 100,000s (~1.2day)
+            // log10(100,000) = 5, so this won't get closer to black than this.
+            Color textColor1 = new Color(0, (int) (255.0 - (Math.min(5.0, Math.log10((double) instantiationDiff)) * 51.0)), 0);
+
+            String textOverlay1 = String.format("%d seconds old", instantiationDiff);
+            net.runelite.api.Point textLoc1 = spotNPC.getCanvasTextLocation(graphics, textOverlay1, 0);
+            OverlayUtil.renderTextLocation(graphics, textLoc1, textOverlay1, textColor1);
+
+            long moveDiff = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC) - trackedFishingSpot.getLastMoveDate().toEpochSecond(ZoneOffset.UTC);
+            // Green(g=255) at 0s,
+            // Black(g=0) at 100,000s (~1.2day)
+            // log10(100,000) = 5, so this won't get closer to black than this.
+            Color textColor2 = new Color(0, (int) (255.0 - (Math.min(5.0, Math.log10((double) moveDiff)) * 51.0)), 0);
+
+            String textOverlay2 = String.format("%d seconds here [%d,%d]", moveDiff, spotNPC.getWorldLocation().getX(), spotNPC.getWorldLocation().getY());
+            net.runelite.api.Point textLoc2 = new net.runelite.api.Point(textLoc1.getX(), textLoc1.getY() + 18);
+            OverlayUtil.renderTextLocation(graphics, textLoc2, textOverlay2, textColor2);
+        }
     }
 
     private void renderColorTileObject(Graphics2D graphics, ColorTileObject colorTileObject, Stroke stroke) {

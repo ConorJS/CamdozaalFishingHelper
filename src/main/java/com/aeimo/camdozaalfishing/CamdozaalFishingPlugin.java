@@ -3,16 +3,20 @@ package com.aeimo.camdozaalfishing;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
 import java.awt.Color;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
 import java.util.function.IntPredicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.*;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -87,9 +91,18 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     // World info
     @Getter
-    private final List<NPC> fishingSpots = new ArrayList<>();
+    private final List<TrackedNPC> fishingSpots = new ArrayList<>();
     @Getter
-    private NPC southernMostFishingSpot;
+    private TrackedNPC closestFishingSpot;
+
+    @Data
+    @AllArgsConstructor
+    static class TrackedNPC {
+        NPC npc;
+        LocalDateTime instantiationDate;
+        WorldPoint lastLocation;
+        LocalDateTime lastMoveDate;
+    }
 
     //</editor-fold>
     // @formatter:on
@@ -106,8 +119,11 @@ public class CamdozaalFishingPlugin extends Plugin {
         currentPlayerState = establishCurrentState();
         goalPlayerState = establishGoalState();
 
-        pruneDeadFishingSpots();
+        pruneDeadAndProcessFishingSpots();
         recalculateClosestFishingSpot();
+
+        // TODO(conor) - debug only (also remove debug flag)
+        isDoAlertFull(true);
     }
 
     @Subscribe
@@ -117,16 +133,18 @@ public class CamdozaalFishingPlugin extends Plugin {
             return;
         }
 
-        fishingSpots.add(npc);
+        fishingSpots.add(new TrackedNPC(npc, LocalDateTime.now(), npc.getWorldLocation(), LocalDateTime.now()));
         recalculateClosestFishingSpot();
     }
 
     @Subscribe
     public void onNpcDespawned(NpcDespawned npcDespawned) {
         final NPC npc = npcDespawned.getNpc();
-        if (npc.getName() != null && !npc.getName().contains("Fishing spot")) {
+
+        // TODO(conor) - FishingPlugin doesn't do this, not sure why I added this here to begin with
+        /*if (npc.getName() != null && !npc.getName().contains("Fishing spot")) {
             return;
-        }
+        }*/
 
         fishingSpots.remove(npc);
         recalculateClosestFishingSpot();
@@ -225,11 +243,12 @@ public class CamdozaalFishingPlugin extends Plugin {
 
         int thresholdTicks = secondsToTicksRoundNearest(config.preEmptiveDelayMs() / 1000f);
 
-        if (Arrays.asList(RAW_FISH).contains(lastItemIncrease)
+        // TODO(conor) - Remove, probably, as fishing attempts aren't guaranteed, so this can be misleading
+        /*if (Arrays.asList(RAW_FISH).contains(lastItemIncrease)
                 && goalPlayerState == CamdozaalFishingState.FISH
                 && meetsThresholdWithRemainderDelayOrExceeds(emptyInventorySlots(), thresholdTicks, TICKS_PER_FISH_ATTEMPT)) {
             return true;
-        }
+        }*/
 
         if (Arrays.asList(RAW_FISH).contains(lastItemDecrease)
                 && (goalPlayerState == CamdozaalFishingState.PREPARE || goalPlayerState == CamdozaalFishingState.OFFER_PREEMPT)
@@ -250,8 +269,11 @@ public class CamdozaalFishingPlugin extends Plugin {
         return thresholdTicks >= estimatedTicksLeft;
     }
 
-    protected boolean isDoAlertFull() {
+    protected boolean isDoAlertFull(boolean debug) {
         if (userInteractingWithClient()) {
+            if (debug) {
+                //log.info("Skip full alert: User interacting with client");
+            }
             return false;
         }
 
@@ -259,6 +281,9 @@ public class CamdozaalFishingPlugin extends Plugin {
             return true;
         }
 
+        if (currentPlayerState != CamdozaalFishingState.INACTIVE && debug) {
+            //log.info("Skip full alert: player state = {}", currentPlayerState);
+        }
         return currentPlayerState == CamdozaalFishingState.INACTIVE;
     }
 
@@ -370,6 +395,10 @@ public class CamdozaalFishingPlugin extends Plugin {
         }
 
         return CamdozaalFishingState.INACTIVE;
+    }
+
+    private <T> boolean arrayContains(T[] array, T item) {
+        return Arrays.asList(array).contains(item);
     }
 
     private CamdozaalFishingState establishGoalState() {
@@ -512,12 +541,13 @@ public class CamdozaalFishingPlugin extends Plugin {
     //== helpers (game objects) =====================================================================================================================
 
     private void recalculateClosestFishingSpot() {
-        southernMostFishingSpot = findClosestGameObject(fishingSpots, NPC::getLocalLocation);
+        closestFishingSpot = findClosestGameObject(fishingSpots, trackedNpc -> trackedNpc.getNpc().getLocalLocation());
     }
 
-    private void pruneDeadFishingSpots() {
-        fishingSpots.stream()
-                .filter(spot -> {
+    private void pruneDeadAndProcessFishingSpots() {
+        List<TrackedNPC> toRemove = fishingSpots.stream()
+                .filter(trackedSpot -> {
+                    NPC spot = trackedSpot.getNpc();
                     // At the end of a fishing spot's lifespan, is enters a state (TODO what?)...
                     boolean oddState = false;
                     if (spot.isDead()) {
@@ -528,9 +558,47 @@ public class CamdozaalFishingPlugin extends Plugin {
                         oddState = true;
                         System.out.println("Not clickable spot");
                     }
+                    if (!spot.getComposition().isInteractible()) {
+                        oddState = true;
+                        System.out.println("Not interactible spot");
+                    }
+                    /*if (!spot.getComposition().isVisible()) {
+                        oddState = true;
+                        System.out.println("Not visible spot");
+                    }*/
+                    if (spot.getTransformedComposition() != null) {
+                        //System.out.println("TX composition not null");
+                        //System.out.println("TX.C clickable: " + spot.getTransformedComposition().isClickable());
+                        int[] models = spot.getTransformedComposition().getModels();
+                        if (!Arrays.equals(models, new int[]{41967})) {
+                            System.out.printf("====== id: %s =====%n", spot.getLocalLocation());
+                            System.out.println("TX.C models: " + Arrays.toString(models));
+                        }
+                    }
+                    int[] models = spot.getComposition().getModels();
+                    if (!Arrays.equals(models, new int[]{41967})) {
+                        System.out.printf("====== id: %s =====%n", spot.getLocalLocation());
+                        System.out.println("C models: " + Arrays.toString(models));
+                    }
+                    if (spot.getOrientation() != 0 || spot.getCurrentOrientation() != 0) {
+                        System.out.printf("====== id: %s =====%n", spot.getLocalLocation());
+                        System.out.printf("Orientation: %s (C: %s)%n", spot.getOrientation(), spot.getCurrentOrientation());
+                    }
                     return oddState;
                 })
-                .forEach(fishingSpots::remove);
+                .collect(Collectors.toList());
+
+        fishingSpots.removeAll(toRemove);
+
+        fishingSpots.forEach(spot -> {
+            if (spot.getNpc().getWorldLocation() == null) {
+                log.warn("Null world location on: {}", spot.getNpc());
+            }
+            if (!Objects.equals(spot.getLastLocation(), spot.getNpc().getWorldLocation())) {
+                spot.setLastMoveDate(LocalDateTime.now());
+                spot.setLastLocation(spot.getNpc().getWorldLocation());
+            }
+        });
     }
 
     private <T> T findClosestGameObject(List<T> gameObjects, Function<T, LocalPoint> locationHandler) {
