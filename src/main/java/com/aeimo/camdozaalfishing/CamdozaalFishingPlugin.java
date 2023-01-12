@@ -39,6 +39,11 @@ public class CamdozaalFishingPlugin extends Plugin {
     static final ObjectPoint PREPARATION_TABLE = new ObjectPoint(PREPARATION_TABLE_OBJECT_ID, "Preparation Table", 11610, 56, 14, 0, Color.YELLOW);
     static final ObjectPoint ALTAR = new ObjectPoint(OFFERING_TABLE_OBJECT_ID, "Altar", 11610, 58, 12, 0, Color.YELLOW);
 
+    private static final int ANIMATION_ID_PREPARING = 896;
+    private static final int ANIMATION_ID_OFFERING = 3_705;
+    private static final int ANIMATION_ID_FISHING = 621;
+    private static final Integer[] ANIMATION_POSE_IDS_IDLE = new Integer[]{808, 813}; // probably more. 808=unarmed, 813=skull sceptre
+
     // TODO(conor) - Implement, use in isCamdozaal
     private static final Set<Integer> CAMDOZAAL_REGIONS = ImmutableSet.of();
 
@@ -377,20 +382,30 @@ public class CamdozaalFishingPlugin extends Plugin {
         Player player = client.getLocalPlayer();
         int animationId = player.getAnimation();
         LocalPoint playerLocation = player.getLocalLocation();
-        if (animationId == 896 && playerLocation.distanceTo(getPreparationTable().getTileObject().getLocalLocation()) <= 143) {
+        if (animationId == ANIMATION_ID_PREPARING && playerLocation.distanceTo(getPreparationTable().getTileObject().getLocalLocation()) <= 143) {
             return CamdozaalFishingState.PREPARE;
         }
-        if (animationId == 3_705 && playerLocation.distanceTo(getPreparationTable().getTileObject().getLocalLocation()) <= 271) {
+        if (animationId == ANIMATION_ID_OFFERING && playerLocation.distanceTo(getPreparationTable().getTileObject().getLocalLocation()) <= 271) {
             return CamdozaalFishingState.OFFER;
         }
-        if (animationId == 621 && playerLocation.distanceTo(getSouthernMostFishingSpot().getLocalLocation()) <= 128) {
+        if (animationId == ANIMATION_ID_FISHING && playerLocation.distanceTo(getClosestFishingSpot().getNpc().getLocalLocation()) <= 128) {
             return CamdozaalFishingState.FISH;
         }
-        // 808 pose animation seems to occur when the player isn't walking or running.
+        // ANIMATION_POSE_IDS_IDLE(808) pose animation seems to occur when the player isn't walking or running (which exact anim. depends on weapon
+        // slot item, seemingly)
         // Initiating walking seems to change this to 819 for the first tick, then 821 for all subsequent.
         // Initiating running seems to change this to 820 for the first tick, then 824 for all subsequent.
         // Pose animation probably changes to values other than these 5, but just not normally outside of Camdozaal (unless items trigger them).
-        if (playerLocationMemory.changed() || animationId != -1 || player.getPoseAnimation() != 808) {
+        if (playerLocationMemory.changed() || animationId != -1 || !arrayContains(ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation())) {
+            if (playerLocationMemory.changed()) {
+                log.info("Player location changed");
+            }
+            if (animationId != -1) {
+                log.info("Player.getAnimation() not -1: {}", animationId);
+            }
+            if (!arrayContains(ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation())) {
+                log.info("Player.getPoseAnimation not ANIMATION_POSE_ID_IDLE({}): {}", ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation());
+            }
             return CamdozaalFishingState.MOVING;
         }
 
