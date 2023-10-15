@@ -55,12 +55,12 @@ public class CamdozaalFishingOverlay extends Overlay {
             if (fishingSpot.isDead()) {
                 oddState = true;
                 String textOverlay = "Dead fishing spot";
-                net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
+                net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 36);
                 OverlayUtil.renderTextLocation(graphics, textLoc, textOverlay, Color.RED);
-            } else if (!fishingSpot.getComposition().isClickable()) {
+            } else if (fishingSpot.getComposition() != null && fishingSpot.getComposition().isInteractible()) {
                 oddState = true;
                 String textOverlay = "Not clickable";
-                net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
+                net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 36);
                 OverlayUtil.renderTextLocation(graphics, textLoc, textOverlay, Color.RED);
             }
             if (poly != null) {
@@ -86,7 +86,7 @@ public class CamdozaalFishingOverlay extends Overlay {
                 String textOverlay = "Dead fishing spot";
                 net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
                 OverlayUtil.renderTextLocation(graphics, textLoc, textOverlay, Color.RED);
-            } else if (!fishingSpot.getComposition().isClickable()) {
+            } else if (fishingSpot.getComposition() != null && !fishingSpot.getComposition().isInteractible()) {
                 oddState = true;
                 String textOverlay = "Not clickable";
                 net.runelite.api.Point textLoc = fishingSpot.getCanvasTextLocation(graphics, textOverlay, 0);
@@ -122,25 +122,26 @@ public class CamdozaalFishingOverlay extends Overlay {
             OverlayUtil.renderPolygon(graphics, poly, highlightColor);
 
             long instantiationDiff = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC) - trackedFishingSpot.getInstantiationDate().toEpochSecond(ZoneOffset.UTC);
-            // Green(g=255) at 0s,
-            // Black(g=0) at 100,000s (~1.2day)
-            // log10(100,000) = 5, so this won't get closer to black than this.
-            Color textColor1 = new Color(0, (int) (255.0 - (Math.min(5.0, Math.log10((double) instantiationDiff)) * 51.0)), 0);
+            Color textColor1 = new Color(0, asLogScaledFractionOf250(instantiationDiff), 0);
 
             String textOverlay1 = String.format("%d seconds old", instantiationDiff);
             net.runelite.api.Point textLoc1 = spotNPC.getCanvasTextLocation(graphics, textOverlay1, 0);
             OverlayUtil.renderTextLocation(graphics, textLoc1, textOverlay1, textColor1);
 
             long moveDiff = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC) - trackedFishingSpot.getLastMoveDate().toEpochSecond(ZoneOffset.UTC);
-            // Green(g=255) at 0s,
-            // Black(g=0) at 100,000s (~1.2day)
-            // log10(100,000) = 5, so this won't get closer to black than this.
-            Color textColor2 = new Color(0, (int) (255.0 - (Math.min(5.0, Math.log10((double) moveDiff)) * 51.0)), 0);
+            Color textColor2 = new Color(0, asLogScaledFractionOf250(moveDiff), 0);
 
             String textOverlay2 = String.format("%d seconds here [%d,%d]", moveDiff, spotNPC.getWorldLocation().getX(), spotNPC.getWorldLocation().getY());
             net.runelite.api.Point textLoc2 = new net.runelite.api.Point(textLoc1.getX(), textLoc1.getY() + 18);
             OverlayUtil.renderTextLocation(graphics, textLoc2, textOverlay2, textColor2);
         }
+    }
+
+    private int asLogScaledFractionOf250(double value) {
+        // Green(g=255) at 0s,
+        // Black(g=0) at 100,000s (~1.2day)
+        // log10(100,000) = 5, so this won't get closer to black than this.
+        return Math.min(255, (int) (255.0 - (Math.min(5.0, Math.log10(value)) * 51.0)));
     }
 
     private void renderColorTileObject(Graphics2D graphics, ColorTileObject colorTileObject, Stroke stroke) {

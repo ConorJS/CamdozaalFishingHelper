@@ -115,6 +115,24 @@ public class CamdozaalFishingPlugin extends Plugin {
     //<editor-fold desc=subscriptions>
     //== subscriptions ===============================================================================================================
 
+    @Override
+    protected void shutDown() throws Exception
+    {
+        overlayManager.remove(overlay);
+        fishingSpots.clear();
+    }
+
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged gameStateChanged)
+    {
+        GameState gameState = gameStateChanged.getGameState();
+        if (gameState == GameState.CONNECTION_LOST || gameState == GameState.LOGIN_SCREEN || gameState == GameState.HOPPING)
+        {
+            fishingSpots.clear();
+        }
+        objectIndicatorsUtil.onGameStateChanged(gameStateChanged);
+    }
+
     @Subscribe
     public void onGameTick(GameTick gameTick) {
         updateCountsOfItems();
@@ -173,11 +191,6 @@ public class CamdozaalFishingPlugin extends Plugin {
                 .orElse(null);
     }
 
-    @Override
-    protected void shutDown() {
-        overlayManager.remove(overlay);
-    }
-
     @Subscribe
     public void onWallObjectSpawned(WallObjectSpawned event) {
         objectIndicatorsUtil.onWallObjectSpawned(event);
@@ -216,11 +229,6 @@ public class CamdozaalFishingPlugin extends Plugin {
     @Subscribe
     public void onGroundObjectDespawned(GroundObjectDespawned event) {
         objectIndicatorsUtil.onGroundObjectDespawned(event);
-    }
-
-    @Subscribe
-    public void onGameStateChanged(GameStateChanged gameStateChanged) {
-        objectIndicatorsUtil.onGameStateChanged(gameStateChanged);
     }
     //</editor-fold>
 
@@ -569,15 +577,11 @@ public class CamdozaalFishingPlugin extends Plugin {
                         oddState = true;
                         System.out.println("Dead fishing spot");
                     }
-                    if (!spot.getComposition().isClickable()) {
-                        oddState = true;
-                        System.out.println("Not clickable spot");
-                    }
-                    if (!spot.getComposition().isInteractible()) {
+                    if (spot.getComposition() != null && !spot.getComposition().isInteractible()) {
                         oddState = true;
                         System.out.println("Not interactible spot");
                     }
-                    /*if (!spot.getComposition().isVisible()) {
+                    /*if (spot.getComposition() != null && !spot.getComposition().isVisible()) {
                         oddState = true;
                         System.out.println("Not visible spot");
                     }*/
@@ -590,10 +594,12 @@ public class CamdozaalFishingPlugin extends Plugin {
                             System.out.println("TX.C models: " + Arrays.toString(models));
                         }
                     }
-                    int[] models = spot.getComposition().getModels();
-                    if (!Arrays.equals(models, new int[]{41967})) {
-                        System.out.printf("====== id: %s =====%n", spot.getLocalLocation());
-                        System.out.println("C models: " + Arrays.toString(models));
+                    if (spot.getComposition() != null) {
+                        int[] models = spot.getComposition().getModels();
+                        if (!Arrays.equals(models, new int[]{41967})) {
+                            System.out.printf("====== id: %s =====%n", spot.getLocalLocation());
+                            System.out.println("C models: " + Arrays.toString(models));
+                        }
                     }
                     if (spot.getOrientation() != 0 || spot.getCurrentOrientation() != 0) {
                         System.out.printf("====== id: %s =====%n", spot.getLocalLocation());
