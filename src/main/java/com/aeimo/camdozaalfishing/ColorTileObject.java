@@ -39,14 +39,14 @@ import net.runelite.api.TileObject;
 @RequiredArgsConstructor
 class ColorTileObject
 {
-    private final TileObject tileObject;
+    TileObject tileObject;
     /**
      * Non-transformed object composition for the object
      */
-    private final ObjectComposition composition;
+    ObjectComposition composition;
     /**
      * Name to highlight for multilocs
      */
-    private final String name;
-    private final Color color;
+    String name;
+    Color color;
 }

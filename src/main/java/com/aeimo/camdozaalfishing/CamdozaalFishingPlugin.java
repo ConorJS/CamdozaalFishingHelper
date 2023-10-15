@@ -84,8 +84,6 @@ public class CamdozaalFishingPlugin extends Plugin {
     private CamdozaalFishingState currentPlayerState;
     private CamdozaalFishingState goalPlayerState;
 
-    private boolean inCamdozaal;
-
     private PreviousAndCurrent<LocalPoint> playerLocationMemory;
 
     // Inventory info
@@ -137,7 +135,6 @@ public class CamdozaalFishingPlugin extends Plugin {
     public void onGameTick(GameTick gameTick) {
         updateCountsOfItems();
         updatePlayerLocation();
-        updateInCamdozaal();
 
         currentPlayerState = establishCurrentState();
         goalPlayerState = establishGoalState();
@@ -145,8 +142,7 @@ public class CamdozaalFishingPlugin extends Plugin {
         pruneDeadAndProcessFishingSpots();
         recalculateClosestFishingSpot();
 
-        // TODO(conor) - debug only (also remove debug flag)
-        isDoAlertFull(true);
+        isDoAlertFull();
     }
 
     @Subscribe
@@ -164,12 +160,8 @@ public class CamdozaalFishingPlugin extends Plugin {
     public void onNpcDespawned(NpcDespawned npcDespawned) {
         final NPC npc = npcDespawned.getNpc();
 
-        // TODO(conor) - FishingPlugin doesn't do this, not sure why I added this here to begin with
-        /*if (npc.getName() != null && !npc.getName().contains("Fishing spot")) {
-            return;
-        }*/
-
         fishingSpots.remove(npc);
+
         recalculateClosestFishingSpot();
     }
     //</editor-fold>
@@ -242,7 +234,6 @@ public class CamdozaalFishingPlugin extends Plugin {
         overlayManager.add(overlay);
 
         updatePlayerLocation();
-        updateInCamdozaal();
     }
 
     protected boolean isDoAlertWeak() {
@@ -255,13 +246,6 @@ public class CamdozaalFishingPlugin extends Plugin {
         }
 
         int thresholdTicks = secondsToTicksRoundNearest(config.preEmptiveDelayMs() / 1000f);
-
-        // TODO(conor) - Remove, probably, as fishing attempts aren't guaranteed, so this can be misleading
-        /*if (Arrays.asList(RAW_FISH).contains(lastItemIncrease)
-                && goalPlayerState == CamdozaalFishingState.FISH
-                && meetsThresholdWithRemainderDelayOrExceeds(emptyInventorySlots(), thresholdTicks, TICKS_PER_FISH_ATTEMPT)) {
-            return true;
-        }*/
 
         if (Arrays.asList(RAW_FISH).contains(lastItemDecrease)
                 && (goalPlayerState == CamdozaalFishingState.PREPARE || goalPlayerState == CamdozaalFishingState.OFFER_PREEMPT)
@@ -282,11 +266,8 @@ public class CamdozaalFishingPlugin extends Plugin {
         return thresholdTicks >= estimatedTicksLeft;
     }
 
-    protected boolean isDoAlertFull(boolean debug) {
+    protected boolean isDoAlertFull() {
         if (userInteractingWithClient()) {
-            if (debug) {
-                //log.info("Skip full alert: User interacting with client");
-            }
             return false;
         }
 
@@ -294,9 +275,6 @@ public class CamdozaalFishingPlugin extends Plugin {
             return true;
         }
 
-        if (currentPlayerState != CamdozaalFishingState.INACTIVE && debug) {
-            //log.info("Skip full alert: player state = {}", currentPlayerState);
-        }
         return currentPlayerState == CamdozaalFishingState.INACTIVE;
     }
 
@@ -380,10 +358,6 @@ public class CamdozaalFishingPlugin extends Plugin {
         }
 
         return true;
-    }
-
-    private void updateInCamdozaal() {
-        inCamdozaal = checkInCamdozaal();
     }
 
     private CamdozaalFishingState establishCurrentState() {

@@ -1,6 +1,5 @@
 package com.aeimo.camdozaalfishing;
 
-
 import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import java.awt.Color;
@@ -157,7 +156,6 @@ public class ObjectIndicatorsUtil
                     && worldPoint.getPlane() == objectPoint.getZ()
                     && objectPoint.getId() == object.getId())
             {
-                log.debug("Marking object {} due to matching {}", object, objectPoint);
                 objects.add(new ColorTileObject(object,
                         objectComposition,
                         objectPoint.getName(),
