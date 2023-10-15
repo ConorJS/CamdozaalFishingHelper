@@ -1,15 +1,6 @@
 package com.aeimo.camdozaalfishing;
 
-import com.google.common.collect.ImmutableSet;
 import com.google.inject.Provides;
-import java.awt.Color;
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.function.Function;
-import java.util.function.IntPredicate;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
@@ -24,9 +15,18 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 
+import javax.inject.Inject;
+import java.awt.*;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.*;
+import java.util.function.Function;
+import java.util.function.IntPredicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 // TODO(conor) - Notify when need to run Barronite handles (+config for handle count)
-// TODO(conor) - When fish spots die, alert is slow
-// TODO(conor) - Needs magic numbers moved to constants
+// TODO(conor) - Disable scanning/highlighting outside of Camdozaal
 @Slf4j
 @PluginDescriptor(name = "Camdozaal Fishing Helper", description = "Visual indicators and alerts to simplify Camdozaal fishing", tags = {"afk", "camdozaal", "f2p", "fishing", "prayer"}, enabledByDefault = false)
 public class CamdozaalFishingPlugin extends Plugin {
@@ -43,11 +43,6 @@ public class CamdozaalFishingPlugin extends Plugin {
     private static final int ANIMATION_ID_OFFERING = 3_705;
     private static final int ANIMATION_ID_FISHING = 621;
     private static final Integer[] ANIMATION_POSE_IDS_IDLE = new Integer[]{808, 813}; // probably more. 808=unarmed, 813=skull sceptre
-
-    // TODO(conor) - Implement, use in isCamdozaal
-    private static final Set<Integer> CAMDOZAAL_REGIONS = ImmutableSet.of();
-
-    private static final int TICKS_PER_FISH_ATTEMPT = 6;
     private static final int TICKS_PER_PREPARE = 4;
     private static final int TICKS_PER_OFFER = 3;
 
@@ -114,18 +109,15 @@ public class CamdozaalFishingPlugin extends Plugin {
     //== subscriptions ===============================================================================================================
 
     @Override
-    protected void shutDown() throws Exception
-    {
+    protected void shutDown() throws Exception {
         overlayManager.remove(overlay);
         fishingSpots.clear();
     }
 
     @Subscribe
-    public void onGameStateChanged(GameStateChanged gameStateChanged)
-    {
+    public void onGameStateChanged(GameStateChanged gameStateChanged) {
         GameState gameState = gameStateChanged.getGameState();
-        if (gameState == GameState.CONNECTION_LOST || gameState == GameState.LOGIN_SCREEN || gameState == GameState.HOPPING)
-        {
+        if (gameState == GameState.CONNECTION_LOST || gameState == GameState.LOGIN_SCREEN || gameState == GameState.HOPPING) {
             fishingSpots.clear();
         }
         objectIndicatorsUtil.onGameStateChanged(gameStateChanged);
@@ -334,30 +326,6 @@ public class CamdozaalFishingPlugin extends Plugin {
         } else {
             playerLocationMemory.newData(playerLocation);
         }
-    }
-
-    private boolean checkInCamdozaal() {
-        // TODO(conor) - CAMDOZAAL_REGIONS isn't implemented
-        if (true) {
-            return true;
-        }
-
-        GameState gameState = client.getGameState();
-        if (gameState != GameState.LOGGED_IN
-                && gameState != GameState.LOADING) {
-            return false;
-        }
-
-        int[] currentMapRegions = client.getMapRegions();
-
-        // Verify that all regions exist in CAMDOZAAL_REGIONS
-        for (int region : currentMapRegions) {
-            if (!CAMDOZAAL_REGIONS.contains(region)) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private CamdozaalFishingState establishCurrentState() {
