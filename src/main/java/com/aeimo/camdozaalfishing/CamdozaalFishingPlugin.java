@@ -345,7 +345,7 @@ public class CamdozaalFishingPlugin extends Plugin {
         // slot item, seemingly)
         // Initiating walking seems to change this to 819 for the first tick, then 821 for all subsequent.
         // Initiating running seems to change this to 820 for the first tick, then 824 for all subsequent.
-        // Pose animation probably changes to values other than these 5, but just not normally outside of Camdozaal (unless items trigger them).
+        // Pose animation probably changes to values other than these 5, but just not normally outside Camdozaal (unless items trigger them).
         if (playerLocationMemory.changed() || animationId != -1 || !arrayContains(ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation())) {
             // NOTE: If troubleshooting issues caused by unrecognised animations, enable this block.
             /*if (!arrayContains(ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation())) {
