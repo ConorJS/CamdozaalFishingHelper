@@ -347,15 +347,10 @@ public class CamdozaalFishingPlugin extends Plugin {
         // Initiating running seems to change this to 820 for the first tick, then 824 for all subsequent.
         // Pose animation probably changes to values other than these 5, but just not normally outside of Camdozaal (unless items trigger them).
         if (playerLocationMemory.changed() || animationId != -1 || !arrayContains(ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation())) {
-            if (playerLocationMemory.changed()) {
-                log.info("Player location changed");
-            }
-            if (animationId != -1) {
-                log.info("Player.getAnimation() not -1: {}", animationId);
-            }
-            if (!arrayContains(ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation())) {
+            // NOTE: If troubleshooting issues caused by unrecognised animations, enable this block.
+            /*if (!arrayContains(ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation())) {
                 log.info("Player.getPoseAnimation not ANIMATION_POSE_ID_IDLE({}): {}", ANIMATION_POSE_IDS_IDLE, player.getPoseAnimation());
-            }
+            }*/
             return CamdozaalFishingState.MOVING;
         }
 
