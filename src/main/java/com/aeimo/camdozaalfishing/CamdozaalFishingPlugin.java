@@ -34,6 +34,10 @@ public class CamdozaalFishingPlugin extends Plugin {
     // @formatter:off
     //== constants ====================================================================================================================
 
+    private static final List<Integer> CAMDOZAAL_REGION_IDS = List.of(11_610, 11866, 12122);
+
+    private static final int CAMDOZAAL_PLANE = 0;
+
     private static final int PREPARATION_TABLE_OBJECT_ID = 41_545;
     private static final int OFFERING_TABLE_OBJECT_ID = 41_546;
     static final ObjectPoint PREPARATION_TABLE = new ObjectPoint(PREPARATION_TABLE_OBJECT_ID, "Preparation Table", 11610, 56, 14, 0, Color.YELLOW);
@@ -75,6 +79,9 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     private ObjectIndicatorsUtil objectIndicatorsUtil;
 
+    @Getter
+    private boolean withinCamdozaal;
+
     // General state
     private CamdozaalFishingState currentPlayerState;
     private CamdozaalFishingState goalPlayerState;
@@ -111,7 +118,7 @@ public class CamdozaalFishingPlugin extends Plugin {
     @Override
     protected void shutDown() throws Exception {
         overlayManager.remove(overlay);
-        fishingSpots.clear();
+        clearState();
     }
 
     @Subscribe
@@ -125,6 +132,15 @@ public class CamdozaalFishingPlugin extends Plugin {
 
     @Subscribe
     public void onGameTick(GameTick gameTick) {
+        boolean nowWithinCamdozaal = checkWithinCamdozaal();
+        if (withinCamdozaal && !nowWithinCamdozaal) {
+            clearState();
+        }
+        withinCamdozaal = nowWithinCamdozaal;
+        if (!withinCamdozaal) {
+            return;
+        }
+
         updateCountsOfItems();
         updatePlayerLocation();
 
@@ -226,6 +242,29 @@ public class CamdozaalFishingPlugin extends Plugin {
         overlayManager.add(overlay);
 
         updatePlayerLocation();
+    }
+
+    protected boolean checkWithinCamdozaal() {
+        Player player = client.getLocalPlayer();
+        if (player == null) {
+            return false;
+        }
+
+        WorldPoint worldLocation = player.getWorldLocation();
+        return CAMDOZAAL_REGION_IDS.contains(worldLocation.getRegionID()) && worldLocation.getPlane() == CAMDOZAAL_PLANE;
+    }
+
+    private void clearState() {
+        fishingSpots.clear();
+        itemCountMemory.clear();
+
+        closestFishingSpot = null;
+        currentPlayerState = null;
+        goalPlayerState = null;
+        playerLocationMemory = null;
+        lastItemDecrease = null;
+        lastItemIncrease = null;
+        ticksSinceLastItemChange = 0;
     }
 
     protected boolean isDoAlertWeak() {

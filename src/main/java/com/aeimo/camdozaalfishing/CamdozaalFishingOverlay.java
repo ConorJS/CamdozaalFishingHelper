@@ -34,6 +34,10 @@ public class CamdozaalFishingOverlay extends Overlay {
 
     @Override
     public Dimension render(Graphics2D graphics) {
+        if (!this.plugin.isWithinCamdozaal()) {
+            return null;
+        }
+
         Stroke stroke = new BasicStroke((float) BORDER_WIDTH);
         if (plugin.isHighlightAltar()) {
             renderColorTileObject(graphics, plugin.getAltar(), stroke);
