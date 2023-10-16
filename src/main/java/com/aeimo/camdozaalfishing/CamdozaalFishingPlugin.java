@@ -28,7 +28,7 @@ import java.util.stream.Stream;
 // TODO(conor) - Notify when need to run Barronite handles (+config for handle count)
 // TODO(conor) - Disable scanning/highlighting outside of Camdozaal
 @Slf4j
-@PluginDescriptor(name = "Camdozaal Fishing Helper", description = "Visual indicators and alerts to simplify Camdozaal fishing", tags = {"afk", "camdozaal", "f2p", "fishing", "prayer"}, enabledByDefault = false)
+@PluginDescriptor(name = "Camdozaal Fishing Helper", description = "Visual indicators and alerts to simplify Camdozaal fishing", tags = {"afk", "camdozaal", "f2p", "fishing", "prayer"})
 public class CamdozaalFishingPlugin extends Plugin {
     //<editor-fold desc=constants>
     // @formatter:off
